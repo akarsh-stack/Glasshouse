@@ -1,0 +1,56 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>
+endobj
+4 0 obj
+<< /Length 1023 >>
+stream
+BT /F1 11 Tf 54 742 Td 15 TL
+(Meridian Compiler Toolchain - Release Notes 4.2) Tj T*
+() Tj T*
+(Build reproducibility) Tj T*
+() Tj T*
+(Identical inputs now produce byte-identical artifacts. The build ID is) Tj T*
+(derived from a hash of the source tree rather than from the wall clock,) Tj T*
+(so two machines building the same commit agree bit for bit.) Tj T*
+() Tj T*
+(Incremental linking) Tj T*
+() Tj T*
+(Link times on the reference workload dropped from 41 seconds to 6) Tj T*
+(seconds by caching relocation tables between builds. The cache is keyed) Tj T*
+(on object file content hashes and lives under .meridian/linkcache.) Tj T*
+() Tj T*
+(Diagnostics) Tj T*
+() Tj T*
+(Error messages now include the inferred type of every subexpression in a) Tj T*
+(failing template instantiation, instead of only the outermost type.) Tj T*
+() Tj T*
+(Known limitations) Tj T*
+() Tj T*
+(The new linker cannot yet emit split debug information on 32-bit) Tj T*
+(targets. Use the legacy linker with the --split-debug flag there.) Tj T*
+ET
+endstream
+endobj
+5 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+xref
+0 6
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000241 00000 n 
+0000001316 00000 n 
+trailer
+<< /Size 6 /Root 1 0 R >>
+startxref
+1386
+%%EOF

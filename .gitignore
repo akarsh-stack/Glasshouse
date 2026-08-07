@@ -1,0 +1,23 @@
+# Credentials. .env.example is the committed template; .env never is.
+.env
+.env.local
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+
+# Runtime state, all regenerable: SQLite traces and the Chroma collection are
+# rebuilt by re-ingesting, so committing them would only ship stale vectors.
+*.db
+chroma_db/
+
+# Node / build output
+node_modules/
+dist/
+.vite/
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/

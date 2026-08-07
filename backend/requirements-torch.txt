@@ -1,0 +1,7 @@
+-r requirements.txt
+
+# Optional: the PyTorch embedding backend. ~2.5 GB installed, versus ~80 MB for
+# the default ONNX path. Only needed if you set
+# EMBEDDING_PROVIDER=sentence-transformers — e.g. to swap in a different
+# sentence-transformers model via EMBEDDING_MODEL, or to run on GPU.
+sentence-transformers>=3.0

@@ -13,25 +13,25 @@
 
   /* Visible keyboard focus everywhere: 2px ring in stage-generate hue */
   :focus-visible {
-    outline: 2px solid #6b95c7;
+    outline: 2px solid #3FBEF5;
     outline-offset: 2px;
     border-radius: 2px;
   }
 
   ::selection {
-    background-color: #263354;
+    background-color: #33456F;
   }
 
   * {
     scrollbar-width: thin;
-    scrollbar-color: #263354 transparent;
+    scrollbar-color: #33456F transparent;
   }
   *::-webkit-scrollbar {
     width: 8px;
     height: 8px;
   }
   *::-webkit-scrollbar-thumb {
-    background: #263354;
+    background: #33456F;
     border-radius: 4px;
   }
   *::-webkit-scrollbar-track {
@@ -40,8 +40,18 @@
 }
 
 @layer components {
+  /* Two levels of section label, because previously every heading in the app
+     was the same 11px caps — "Pipeline trace", "Answer" and "Retrieved
+     context" all shouted at identical volume, so the eye had no way to tell a
+     panel title from the primary output. */
   .label-caps {
-    @apply font-body text-[11px] font-medium uppercase tracking-[0.14em] text-ink-300;
+    @apply font-body text-label font-medium uppercase text-ink-300;
+  }
+
+  /* Promoted: marks the section that *is* the answer. Same family and tracking
+     so it reads as the same system, one step up in weight and value. */
+  .label-caps-primary {
+    @apply font-body text-label font-semibold uppercase text-ink-100;
   }
 
   /* The other half of the depth system. A shadow alone says "something is
@@ -50,9 +60,9 @@
      catch light on their top bevel — this is that bevel, at 1px.
 
      Done as an inset box-shadow rather than a border so it composes with the
-     existing 1px #263354 border instead of replacing it. */
+     existing 1px #33456F border instead of replacing it. */
   .surface-edge {
-    box-shadow: inset 0 1px 0 0 rgba(221, 228, 242, 0.055);
+    box-shadow: inset 0 1px 0 0 rgba(228, 235, 250, 0.055);
   }
 
   /* Parent for any child using rotateX on entry. Without a perspective the
@@ -64,9 +74,14 @@
     perspective-origin: 50% 0%;
   }
 
-  /* Ambient glow behind the hero trace — the one gradient in the app. Sits at
-     3% opacity: it should register as "this area is lit", never as a visible
-     shape with an edge. */
+  /* Ambient glow behind the hero trace — the one gradient in the app. It
+     should register as "this area is lit", never as a visible shape with an
+     edge.
+
+     Raised from the original 9%/4.5%: against the brighter accent palette the
+     old wash was invisible, so the hero element sat on the same flat field as
+     everything else and stopped reading as the focal point. Now in the new sky
+     and violet, at roughly double the strength. */
   .trace-ambient::before {
     content: "";
     position: absolute;
@@ -74,10 +89,10 @@
     pointer-events: none;
     z-index: 0;
     background: radial-gradient(
-      55% 70% at 50% 42%,
-      rgba(107, 149, 199, 0.09) 0%,
-      rgba(146, 135, 192, 0.045) 38%,
-      transparent 72%
+      58% 74% at 50% 42%,
+      rgba(63, 190, 245, 0.15) 0%,
+      rgba(169, 139, 255, 0.08) 40%,
+      transparent 74%
     );
   }
 }
@@ -133,8 +148,21 @@
   height: 1.05em;
   margin-left: 2px;
   vertical-align: text-bottom;
-  background: #6b95c7;
+  background: #3FBEF5;
   animation: caret-blink 0.9s step-end infinite;
+}
+
+/* The one legitimate infinite animation: indeterminate progress. 0.9s rather
+   than a faster spin so it reads as "working", not "panicking". */
+@keyframes spin-slow-kf {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.spin-slow {
+  animation: spin-slow-kf 0.9s linear infinite;
+  transform-origin: center;
 }
 
 @keyframes skeleton-shimmer {
@@ -148,7 +176,7 @@
 }
 
 .skeleton {
-  background: #1a2540;
+  background: #1C2947;
   border-radius: 4px;
   animation: skeleton-shimmer 1.4s ease-in-out infinite;
 }
@@ -159,6 +187,12 @@
   .answer-caret,
   .skeleton {
     animation: none !important;
+  }
+  /* The spinner keeps turning: it is the only signal that an async operation
+     is still alive, and freezing it would read as a hung UI. Slowed instead,
+     which is the compromise the preference actually asks for. */
+  .spin-slow {
+    animation-duration: 2.4s !important;
   }
   *,
   *::before,

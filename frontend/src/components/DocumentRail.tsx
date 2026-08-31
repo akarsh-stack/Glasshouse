@@ -4,6 +4,7 @@ import { motion, useReducedMotion } from "framer-motion";
 import type { UploadStatus } from "../hooks/useDocuments";
 import { STAGE_COLOR, WARN_COLOR } from "../lib/stages";
 import type { DocumentInfo } from "../types";
+import { Close, Spinner, Upload } from "./icons";
 import { Skeleton } from "./ui";
 
 interface DocumentRailProps {
@@ -58,13 +59,18 @@ export function DocumentRail({
         onDrop={handleDrop}
         className="cursor-pointer rounded-md border border-dashed px-3 py-5 text-center transition-[box-shadow,border-color,background-color] duration-200"
         style={{
-          borderColor: dragOver ? STAGE_COLOR.generate : "#263354",
-          backgroundColor: dragOver ? "#1A2540" : "transparent",
+          borderColor: dragOver ? STAGE_COLOR.generate : "#33456F",
+          backgroundColor: dragOver ? "#1C2947" : "transparent",
           boxShadow: dragOver
-            ? `0 0 18px -4px ${STAGE_COLOR.generate}44, inset 0 1px 0 0 rgba(221,228,242,0.055)`
-            : "inset 0 1px 0 0 rgba(221,228,242,0.04)",
+            ? `0 0 18px -4px ${STAGE_COLOR.generate}44, inset 0 1px 0 0 rgba(228,235,250,0.055)`
+            : "inset 0 1px 0 0 rgba(228,235,250,0.04)",
         }}
       >
+        <Upload
+          size={18}
+          className="mx-auto mb-1.5 transition-colors duration-200"
+          style={{ color: dragOver ? STAGE_COLOR.generate : "#94A6CC" }}
+        />
         <p className="font-display text-sm text-ink-100">Upload documents</p>
         <p className="mt-1 text-xs text-ink-300">
           Drop files here or click to browse
@@ -88,13 +94,14 @@ export function DocumentRail({
             >
               <span className="min-w-0 truncate text-ink-100">{u.name}</span>
               {u.status === "uploading" && (
-                <span className="shrink-0 font-mono text-[10px] text-ink-300">
-                  uploading…
+                <span className="flex shrink-0 items-center gap-1.5 font-mono text-label text-ink-300">
+                  <Spinner size={11} />
+                  uploading
                 </span>
               )}
               {u.status === "done" && (
                 <span
-                  className="shrink-0 font-mono text-[10px]"
+                  className="shrink-0 font-mono text-label"
                   style={{ color: STAGE_COLOR.embed }}
                 >
                   done
@@ -102,7 +109,7 @@ export function DocumentRail({
               )}
               {u.status === "error" && (
                 <span
-                  className="shrink-0 font-mono text-[10px]"
+                  className="shrink-0 font-mono text-label"
                   style={{ color: WARN_COLOR }}
                   title={u.message}
                 >
@@ -157,8 +164,8 @@ export function DocumentRail({
                   <p className="truncate text-xs font-medium text-ink-100">
                     {doc.filename}
                   </p>
-                  <p className="mt-0.5 font-mono text-[10px] text-ink-300">
-                    {doc.chunk_count} chunks
+                  <p className="mt-0.5 font-mono text-label text-ink-300">
+                    {doc.chunk_count} {doc.chunk_count === 1 ? "chunk" : "chunks"}
                     {doc.status !== "ready" && (
                       <span className="ml-1.5 text-ink-300">· {doc.status}</span>
                     )}
@@ -168,9 +175,12 @@ export function DocumentRail({
                   type="button"
                   aria-label={`Delete ${doc.filename}`}
                   onClick={() => onDelete(doc.id)}
-                  className="shrink-0 rounded px-1.5 py-0.5 text-sm leading-none text-ink-300 opacity-60 transition-colors hover:bg-ink-700 hover:text-ink-100 group-hover:opacity-100"
+                  // Destructive, so it warms to the warn hue on hover rather
+                  // than just brightening — the colour is the warning, and the
+                  // aria-label carries the meaning for anyone who can't see it.
+                  className="grid h-6 w-6 shrink-0 place-items-center rounded text-ink-300 opacity-0 transition-[background-color,color,opacity] duration-120 hover:bg-ink-700 hover:text-warn focus-visible:opacity-100 group-hover:opacity-100"
                 >
-                  ×
+                  <Close size={14} />
                 </button>
               </motion.li>
             ))}

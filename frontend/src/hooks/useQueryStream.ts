@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { SESSION_ID, streamQuery } from "../lib/api";
+import { layoutStages, markActive } from "../lib/stageTimeline";
+import type { ServerStageMs } from "../lib/stageTimeline";
 import { addTrace } from "../lib/traceStore";
 import type {
   CacheStatus,
@@ -54,11 +56,11 @@ export function useQueryStream() {
     abortRef.current = controller;
 
     const t0 = performance.now();
-    // Timings we mutate locally, mirrored into state on each event.
-    const timings: StageTimings = { embed: { start: t0, end: null } };
+    // Durations reported by the backend, accumulated as its events arrive.
+    // These are the only source of segment widths — see lib/stageTimeline.ts.
+    const measured: ServerStageMs = {};
+    let timings: StageTimings = markActive({}, "embed", t0);
     let cacheHit = false;
-    let cacheEventAt: number | null = null;
-    let retrievalEventAt: number | null = null;
 
     setState({
       ...INITIAL,
@@ -80,31 +82,30 @@ export function useQueryStream() {
         const now = performance.now();
 
         switch (event.type) {
-          case "retrieval": {
-            retrievalEventAt = now;
-            // The backend emits a single event covering embed + retrieve.
-            // Split the measured span so both nodes light in sequence.
-            const embedEnd = t0 + (now - t0) * 0.35;
-            timings.embed = { start: t0, end: embedEnd };
-            timings.retrieve = { start: embedEnd, end: now };
-            timings.cache = { start: now, end: null };
+          // Event order is fixed by the backend: cache first, because it
+          // decides whether retrieval runs at all.
+          case "cache": {
+            cacheHit = event.status !== "miss";
+            measured.embed = event.embed_ms;
+            measured.cache = event.cache_ms;
+            timings = layoutStages(t0, measured);
+            // On a hit the answer comes straight back, so nothing is in flight.
+            if (!cacheHit) timings = markActive(timings, "retrieve", now);
             setState((s) => ({
               ...s,
-              chunks: [...event.chunks].sort((a, b) => b.score - a.score),
+              cache: { status: event.status, similarity: event.similarity },
               stages: snapshotStages(),
             }));
             break;
           }
 
-          case "cache": {
-            cacheEventAt = now;
-            cacheHit = event.status !== "miss";
-            if (timings.cache) timings.cache.end = now;
-            else timings.cache = { start: retrievalEventAt ?? t0, end: now };
-            if (!cacheHit) timings.generate = { start: now, end: null };
+          case "retrieval": {
+            measured.retrieve = event.retrieve_ms;
+            timings = layoutStages(t0, measured);
+            if (!cacheHit) timings = markActive(timings, "generate", now);
             setState((s) => ({
               ...s,
-              cache: { status: event.status, similarity: event.similarity },
+              chunks: [...event.chunks].sort((a, b) => b.score - a.score),
               stages: snapshotStages(),
             }));
             break;
@@ -115,17 +116,17 @@ export function useQueryStream() {
             break;
 
           case "done": {
-            if (timings.generate && timings.generate.end === null) {
-              timings.generate.end = now;
+            // The generate segment's width is the server's own llm_ms; the
+            // client clock only fills in if the trace somehow lacks it.
+            const llmMs = event.trace.stages_ms?.llm_ms;
+            if (!cacheHit) {
+              measured.generate =
+                llmMs ?? (timings.generate ? now - timings.generate.start : 0);
+              timings = layoutStages(t0, measured);
             }
-            const cacheMs =
-              cacheEventAt !== null && retrievalEventAt !== null
-                ? cacheEventAt - retrievalEventAt
-                : undefined;
             addTrace({
               ts: Date.now(),
               trace: event.trace,
-              client_cache_ms: cacheMs,
               client_total_ms: now - t0,
             });
             setState((s) => ({
@@ -138,10 +139,14 @@ export function useQueryStream() {
           }
 
           case "error": {
-            for (const key of Object.keys(timings) as (keyof StageTimings)[]) {
-              const t = timings[key];
-              if (t && t.end === null) t.end = now;
-            }
+            // Close whatever was in flight so the trace stops mid-pipeline at
+            // the stage that failed rather than animating forever.
+            timings = Object.fromEntries(
+              Object.entries(timings).map(([k, v]) => [
+                k,
+                v.end === null ? { ...v, end: now } : v,
+              ]),
+            ) as StageTimings;
             setState((s) => ({
               ...s,
               phase: "error",

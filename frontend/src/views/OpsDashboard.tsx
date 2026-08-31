@@ -60,6 +60,8 @@ interface ReadoutDef {
   label: string;
   value: number | null;
   format: (n: number) => string;
+  /** Optional tooltip, for figures whose denominator isn't self-evident. */
+  hint?: string;
 }
 
 function ReadoutRow({ readouts, loading }: { readouts: ReadoutDef[]; loading: boolean }) {
@@ -69,6 +71,7 @@ function ReadoutRow({ readouts, loading }: { readouts: ReadoutDef[]; loading: bo
       {readouts.map((r, i) => (
         <motion.div
           key={r.label}
+          title={r.hint}
           // Cells resolve left to right like an instrument powering on. The
           // stagger is short (40ms) — this is six numbers on one row, not a
           // list, so it should read as a single sweep rather than six events.
@@ -93,7 +96,7 @@ function ReadoutRow({ readouts, loading }: { readouts: ReadoutDef[]; loading: bo
             // hierarchy fix: these numerals are the reason the view exists and
             // were previously only one step above the caption. tabular-nums
             // stops the width jitter as digits tick during a load test.
-            <p className="mt-1 font-mono text-[30px] font-medium leading-none tracking-[-0.02em] tabular-nums text-ink-100">
+            <p className="mt-1.5 font-mono text-readout font-medium tabular-nums text-ink-100">
               {r.value === null ? (
                 <span className="text-2xl text-ink-300">—</span>
               ) : (
@@ -127,7 +130,7 @@ const tooltipStyle = {
   // Recharts renders it inline, so this mirrors `shadow-lift` by hand rather
   // than reaching for the Tailwind class.
   boxShadow:
-    "0 2px 4px rgba(3,7,18,0.55), 0 8px 18px -4px rgba(3,7,18,0.55), 0 22px 48px -16px rgba(3,7,18,0.66)",
+    "0 2px 4px rgba(2,5,12,0.55), 0 8px 18px -4px rgba(2,5,12,0.55), 0 22px 48px -16px rgba(2,5,12,0.66)",
   padding: "6px 10px",
 } as const;
 
@@ -178,10 +181,13 @@ function RecentLatencyChart() {
   const traces = useSyncExternalStore(subscribeTraces, getTraces);
   const data = traces.slice(-20).map((entry, i) => {
     const stages = entry.trace.stages_ms ?? {};
+    // Every series is a backend measurement now that the trace carries embed
+    // and cache time; the client clock is only used for the total.
     return {
       name: `#${i + 1}`,
+      Embed: Math.round(stages.embed_ms ?? 0),
+      Cache: Math.round(stages.cache_ms ?? 0),
       Retrieval: Math.round(stages.retrieval_ms ?? 0),
-      Cache: Math.round(entry.client_cache_ms ?? 0),
       Generate: Math.round(stages.llm_ms ?? 0),
     };
   });
@@ -215,8 +221,11 @@ function RecentLatencyChart() {
           labelStyle={{ color: INK[300] }}
           formatter={(value: number | string) => `${value}ms`}
         />
-        <Bar dataKey="Retrieval" stackId="lat" fill={STAGE_COLOR.retrieve} barSize={14} />
+        {/* Stacked in pipeline order, so a bar reads left-to-right the same way
+            the trace does. */}
+        <Bar dataKey="Embed" stackId="lat" fill={STAGE_COLOR.embed} barSize={14} />
         <Bar dataKey="Cache" stackId="lat" fill={STAGE_COLOR.cache} barSize={14} />
+        <Bar dataKey="Retrieval" stackId="lat" fill={STAGE_COLOR.retrieve} barSize={14} />
         <Bar
           dataKey="Generate"
           stackId="lat"
@@ -246,7 +255,7 @@ function ChartLegend({ items }: { items: { label: string; color: string }[] }) {
             className="inline-block h-2 w-2 rounded-[2px]"
             style={{ backgroundColor: it.color }}
           />
-          <span className="text-[11px] text-ink-300">{it.label}</span>
+          <span className="text-label text-ink-300">{it.label}</span>
         </span>
       ))}
     </div>
@@ -270,6 +279,11 @@ export function OpsDashboard({ active }: { active: boolean }) {
       label: "req / sec",
       value: metrics?.req_per_sec ?? null,
       format: (n) => fmtNum(n, 2),
+      // Measured over the span traffic arrived in, not the selected window —
+      // otherwise a 30s load test inside a 1h window reads as idle.
+      hint: metrics
+        ? `${metrics.total_requests} requests over ${fmtNum(metrics.observed_span_sec, 1)}s`
+        : undefined,
     },
     {
       label: "p50",
@@ -330,7 +344,7 @@ export function OpsDashboard({ active }: { active: boolean }) {
       </div>
 
       {loadTest.running && (
-        <div className="mb-4 h-1 w-full overflow-hidden rounded-full bg-ink-950/70 shadow-[inset_0_1px_2px_rgba(3,7,18,0.65)]">
+        <div className="mb-4 h-1 w-full overflow-hidden rounded-full bg-ink-950/70 shadow-[inset_0_1px_2px_rgba(2,5,12,0.65)]">
           <div
             className="h-full rounded-full transition-[width] duration-300"
             style={{
@@ -346,7 +360,7 @@ export function OpsDashboard({ active }: { active: boolean }) {
       <ReadoutRow readouts={readouts} loading={loading} />
 
       <div className="mt-2 flex items-baseline justify-between px-1">
-        <p className="font-mono text-[11px] text-ink-300">
+        <p className="font-mono text-label text-ink-300">
           {metrics
             ? `${metrics.total_requests} requests · ${fmtCost(metrics.total_cost_usd ?? 0)} total cost · window ${metrics.window}`
             : " "}
@@ -398,10 +412,13 @@ export function OpsDashboard({ active }: { active: boolean }) {
             <h2 className="font-display text-sm font-medium tracking-[0.01em] text-ink-100">
               Recent query latency by stage
             </h2>
+            {/* Pipeline order, matching both the stack order in the chart and
+                the node order in the trace. */}
             <ChartLegend
               items={[
-                { label: "Retrieval", color: STAGE_COLOR.retrieve },
+                { label: "Embed", color: STAGE_COLOR.embed },
                 { label: "Cache", color: STAGE_COLOR.cache },
+                { label: "Retrieval", color: STAGE_COLOR.retrieve },
                 { label: "Generate", color: STAGE_COLOR.generate },
               ]}
             />

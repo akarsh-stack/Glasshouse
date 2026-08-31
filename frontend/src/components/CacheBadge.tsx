@@ -29,7 +29,7 @@ export function CacheBadge({ status, similarity, model }: CacheBadgeProps) {
       <Badge color={STAGE_COLOR.generate}>
         <Dot color={STAGE_COLOR.generate} />
         Cache miss → calling{" "}
-        <span className="font-mono text-[11px] font-medium">{model || "model"}</span>
+        <span className="font-mono text-label font-medium">{model || "model"}</span>
       </Badge>
     );
   }
@@ -41,7 +41,7 @@ export function CacheBadge({ status, similarity, model }: CacheBadgeProps) {
       {status === "hit_semantic" && similarity !== null && (
         <>
           ,{" "}
-          <span className="font-mono text-[11px] font-medium tabular-nums">
+          <span className="font-mono text-label font-medium tabular-nums">
             {fmtNum(similarity, 2)}
           </span>{" "}
           similarity

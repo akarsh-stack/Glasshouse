@@ -9,9 +9,10 @@ export interface TraceLogEntry {
   /** Date.now() when the trace completed */
   ts: number;
   trace: TraceData;
-  /** Client-measured cache-stage duration (backend does not report it) */
-  client_cache_ms?: number;
-  /** Client-measured total wall time */
+  /**
+   * Client-measured total wall time. Per-stage durations all live on
+   * `trace.stages_ms` — the backend measures every one of them.
+   */
   client_total_ms?: number;
 }
 

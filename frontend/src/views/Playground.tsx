@@ -6,6 +6,7 @@ import { ChunkCards } from "../components/ChunkCards";
 import { DocumentRail } from "../components/DocumentRail";
 import { PipelineTrace } from "../components/PipelineTrace";
 import { Receipt } from "../components/Receipt";
+import { SuggestedQuestions } from "../components/SuggestedQuestions";
 import { Skeleton } from "../components/ui";
 import { useDocuments } from "../hooks/useDocuments";
 import { useQueryStream } from "../hooks/useQueryStream";
@@ -21,6 +22,13 @@ export function Playground({ tier, railOpen }: PlaygroundProps) {
   const docs = useDocuments();
   const { state, run } = useQueryStream();
   const [input, setInput] = useState("");
+  // Shared highlight between the answer's [n] citations and the chunk cards.
+  // Lifted here because both panels are siblings and either can originate it.
+  const [activeCitation, setActiveCitation] = useState<number | null>(null);
+  // Bumped on activation so the effect that scrolls re-runs even when the same
+  // citation is clicked twice.
+  const [scrollTarget, setScrollTarget] = useState<number | null>(null);
+  const [scrollNonce, setScrollNonce] = useState(0);
 
   // Refresh doc list after a completed query (chunk counts can change while
   // ingestion finishes in the background).
@@ -34,7 +42,15 @@ export function Playground({ tier, railOpen }: PlaygroundProps) {
     e?.preventDefault();
     const q = input.trim();
     if (!q || state.phase === "running") return;
+    setActiveCitation(null);
+    setScrollTarget(null);
     run(q, tier);
+  };
+
+  const selectCitation = (n: number) => {
+    setActiveCitation(n);
+    setScrollTarget(n);
+    setScrollNonce((v) => v + 1);
   };
 
   const cacheHit = state.cache !== null && state.cache.status !== "miss";
@@ -65,7 +81,7 @@ export function Playground({ tier, railOpen }: PlaygroundProps) {
       {/* center + right */}
       <div className="flex min-w-0 flex-1 flex-col gap-4 overflow-y-auto p-4 lg:flex-row lg:gap-0 lg:p-0">
         {/* center column */}
-        <main className="min-w-0 flex-1 lg:overflow-y-auto lg:p-5">
+        <main className="min-w-0 flex-1 lg:overflow-y-auto lg:p-6">
           <form onSubmit={submit}>
             <label htmlFor="query-input" className="sr-only">
               Ask a question about your documents
@@ -78,24 +94,26 @@ export function Playground({ tier, railOpen }: PlaygroundProps) {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               disabled={state.phase === "running"}
-              className="w-full rounded-md border border-ink-700 bg-ink-900 px-4 py-3 font-body text-[15px] text-ink-100 placeholder:text-ink-300/70 shadow-panel surface-edge transition-[box-shadow,border-color] duration-120 focus:outline-none focus:border-ink-300/30 focus:shadow-raised disabled:opacity-60"
+              // The primary control, so it gets the lede size rather than
+              // sitting a pixel above the caption scale. Focus ring picks up
+              // the generate hue, matching the stage it will trigger.
+              className="w-full rounded-md border border-ink-700 bg-ink-900 px-4 py-3.5 font-body text-lede text-ink-100 placeholder:text-ink-300/60 shadow-panel surface-edge transition-[box-shadow,border-color] duration-120 focus:border-ink-600 focus:shadow-raised focus:outline-none disabled:opacity-60"
             />
           </form>
 
           {noDocuments && !hasRun && (
-            <p className="mt-3 text-sm leading-relaxed text-ink-300">
-              No documents uploaded yet — add some on the left to ground
-              answers in your own material. You can still ask a question
-              without context.
+            <p className="mt-3 max-w-measure text-ui text-ink-300">
+              No documents uploaded yet — add some on the left to ground answers
+              in your own material. You can still ask a question without context.
             </p>
           )}
 
           {/* signature element: the pipeline trace */}
-          <div className="mt-5 rounded-md border border-ink-700 bg-ink-900 px-3 pb-1 pt-3 shadow-panel surface-edge">
+          <div className="mt-6 rounded-md border border-ink-700 bg-ink-900 px-3 pb-1 pt-3 shadow-panel surface-edge">
             <div className="mb-1 flex items-baseline justify-between px-1">
               <span className="label-caps">Pipeline trace</span>
               {hasRun && (
-                <span className="min-w-0 truncate pl-4 font-mono text-[11px] text-ink-300">
+                <span className="min-w-0 truncate pl-4 font-mono text-label text-ink-300">
                   {state.query}
                 </span>
               )}
@@ -126,15 +144,35 @@ export function Playground({ tier, railOpen }: PlaygroundProps) {
             </div>
           )}
 
+          {/* Empty state: starter questions rather than half a screen of
+              nothing. Also makes a live demo one click instead of typing a
+              question from memory. */}
+          {!hasRun && !noDocuments && (
+            <div className="mt-6 max-w-measure">
+              <SuggestedQuestions
+                documents={docs.documents}
+                onPick={(q) => {
+                  setInput(q);
+                  setActiveCitation(null);
+                  setScrollTarget(null);
+                  run(q, tier);
+                }}
+              />
+            </div>
+          )}
+
           {/* streaming answer */}
           {(state.answer || state.phase === "running") && !state.error && (
-            <div className="mt-4">
-              <p className="label-caps mb-2">Answer</p>
+            <div className="mt-6 max-w-measure">
+              <p className="label-caps-primary mb-2.5">Answer</p>
               {state.answer ? (
                 <Answer
                   text={state.answer}
                   streaming={state.phase === "running"}
                   citationCount={state.chunks?.length ?? 0}
+                  activeCitation={activeCitation}
+                  onCitationHover={setActiveCitation}
+                  onCitationSelect={selectCitation}
                 />
               ) : (
                 <div className="space-y-2">
@@ -148,7 +186,7 @@ export function Playground({ tier, railOpen }: PlaygroundProps) {
 
           {/* receipt strip */}
           {state.trace && state.phase === "done" && (
-            <div className="mt-4">
+            <div className="mt-6 pb-6">
               <Receipt trace={state.trace} clientStages={state.stages} />
             </div>
           )}
@@ -156,7 +194,10 @@ export function Playground({ tier, railOpen }: PlaygroundProps) {
 
         {/* right panel */}
         <aside
-          className="w-full shrink-0 border-ink-700 lg:w-80 lg:overflow-y-auto lg:border-l lg:p-4"
+          // Widened at xl: at 320px a three-line-clamped passage was four words
+          // per line, which is unreadable for the panel whose job is letting you
+          // check the evidence.
+          className="w-full shrink-0 border-ink-700 lg:w-80 lg:overflow-y-auto lg:border-l lg:p-5 xl:w-96"
           aria-label="Retrieval details"
         >
           {!hasRun ? (
@@ -184,7 +225,16 @@ export function Playground({ tier, railOpen }: PlaygroundProps) {
                   <Skeleton className="h-24 w-full" />
                 </div>
               ) : (
-                <ChunkCards chunks={state.chunks} documents={docs.documents} />
+                <ChunkCards
+                  chunks={state.chunks}
+                  documents={docs.documents}
+                  activeCitation={activeCitation}
+                  onHover={setActiveCitation}
+                  scrollToCitation={scrollTarget}
+                  // Increments on every activation, so clicking the same
+                  // citation twice scrolls again instead of being a no-op.
+                  scrollNonce={scrollNonce}
+                />
               )}
             </div>
           )}

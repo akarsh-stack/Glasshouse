@@ -6,12 +6,13 @@ import type { QueryPhase, StageTimings } from "../types";
 
 /*
  * The signature element: a horizontal signal line through four numbered
- * stage nodes (1 Embed, 2 Retrieve, 3 Cache, 4 Generate). The signal head
- * draws left-to-right in real time — the time spent on each segment is the
- * actual measured latency of that stage. While a stage is in flight the
- * head oscillates near its node; when the stage's SSE event arrives the
- * segment settles into the stage hue. On cache hit the signal terminates
- * at node 3. On fallback the Generate node pulses terracotta.
+ * stage nodes (1 Embed, 2 Cache, 3 Retrieve, 4 Generate — the order the
+ * backend executes them in). The signal head draws left-to-right in real
+ * time, and every settled segment's width is the backend's own measurement
+ * of that stage, carried on the SSE events (see lib/stageTimeline.ts).
+ * While a stage is in flight the head oscillates near its node. On a cache
+ * hit the signal terminates at the Cache node and Generate is marked
+ * skipped. On fallback the Generate node pulses terracotta.
  */
 
 const VIEW_W = 860;
@@ -20,6 +21,7 @@ const BASE_Y = 50;
 const LEAD_X = 24;
 const NODE_X = [140, 350, 560, 780];
 const NODE_R = 13;
+const CACHE_IDX = STAGES.findIndex((s) => s.key === "cache");
 
 type StageStatus = "pending" | "active" | "done" | "skipped";
 
@@ -145,7 +147,7 @@ export const PipelineTrace = memo(function PipelineTrace({
               dx="0"
               dy="1.5"
               stdDeviation="2"
-              floodColor="#030712"
+              floodColor="#02050C"
               floodOpacity="0.7"
             />
           </filter>
@@ -184,21 +186,25 @@ export const PipelineTrace = memo(function PipelineTrace({
               x2={x2}
               y2={BASE_Y}
               stroke={s.color}
-              strokeWidth={2}
+              // Thicker and fully opaque when settled: the segment is the
+              // measurement, so it should be the boldest line on screen.
+              strokeWidth={isDone ? 2.5 : 2}
               strokeLinecap="round"
-              opacity={isDone ? 0.95 : 0.45}
+              opacity={isDone ? 1 : 0.5}
             />
           );
         })}
 
-        {/* cache-hit terminal tick at node 3 */}
-        {cacheHit && (
+        {/* Terminal tick over the cache node: on a hit, this is where the answer
+            came from. Derived from STAGES rather than a literal index so it
+            follows the node if the pipeline order changes again. */}
+        {cacheHit && CACHE_IDX >= 0 && (
           <line
-            x1={NODE_X[2]}
+            x1={NODE_X[CACHE_IDX]}
             y1={BASE_Y - 26}
-            x2={NODE_X[2]}
+            x2={NODE_X[CACHE_IDX]}
             y2={BASE_Y - NODE_R - 3}
-            stroke={STAGES[2].color}
+            stroke={STAGES[CACHE_IDX].color}
             strokeWidth={2}
             strokeLinecap="round"
           />
@@ -247,9 +253,12 @@ export const PipelineTrace = memo(function PipelineTrace({
                 <circle
                   cx={NODE_X[i]}
                   cy={BASE_Y}
-                  r={NODE_R + 1}
+                  r={NODE_R + 2}
                   fill={s.color}
-                  opacity={0.3}
+                  // 0.3 -> 0.5: with saturated hues a completed node should
+                  // read as genuinely lit, which is what makes the finished
+                  // trace look like an instrument rather than a legend.
+                  opacity={0.5}
                   filter="url(#pt-head-glow)"
                 />
               )}

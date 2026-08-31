@@ -26,7 +26,7 @@ function buildSegments(trace: TraceData, clientStages: StageTimings): WaterfallS
       return {
         label: labelForMsKey(key),
         ms,
-        color: stage ? STAGE_COLOR[stage] : "#8B99B8",
+        color: stage ? STAGE_COLOR[stage] : "#94A6CC",
       };
     });
   }
@@ -70,7 +70,7 @@ export function Receipt({ trace, clientStages }: ReceiptProps) {
     >
       <div className="mb-2 flex items-baseline justify-between">
         <span className="label-caps">Receipt</span>
-        <span className="font-mono text-[11px] text-ink-300">
+        <span className="font-mono text-label text-ink-300">
           {trace.request_id.slice(0, 8)}
         </span>
       </div>
@@ -80,7 +80,7 @@ export function Receipt({ trace, clientStages }: ReceiptProps) {
         <>
           {/* Recessed channel, same treatment as the chunk similarity bars, so
               every "proportion of a whole" bar in the app reads identically. */}
-          <div className="flex h-2.5 w-full overflow-hidden rounded-sm bg-ink-950/70 shadow-[inset_0_1px_2px_rgba(3,7,18,0.65)]">
+          <div className="flex h-2.5 w-full overflow-hidden rounded-sm bg-ink-950/70 shadow-[inset_0_1px_2px_rgba(2,5,12,0.65)]">
             {segments.map((seg, i) => (
               <motion.div
                 key={seg.label}
@@ -97,7 +97,7 @@ export function Receipt({ trace, clientStages }: ReceiptProps) {
                   // 1px dark rule between adjacent segments. Two stage hues
                   // meeting flush blur into one band at this height; the gap is
                   // what keeps the proportions legible.
-                  boxShadow: i > 0 ? "inset 1px 0 0 rgba(11,17,32,0.85)" : undefined,
+                  boxShadow: i > 0 ? "inset 1px 0 0 rgba(8,13,26,0.85)" : undefined,
                 }}
               />
             ))}
@@ -109,15 +109,15 @@ export function Receipt({ trace, clientStages }: ReceiptProps) {
                   className="inline-block h-2 w-2 rounded-[2px]"
                   style={{ backgroundColor: seg.color }}
                 />
-                <span className="text-[11px] text-ink-300">{seg.label}</span>
-                <span className="font-mono text-[11px] text-ink-100">
+                <span className="text-label text-ink-300">{seg.label}</span>
+                <span className="font-mono text-label text-ink-100">
                   {fmtMs(seg.ms)}
                 </span>
               </span>
             ))}
             <span className="ml-auto inline-flex items-center gap-1.5">
-              <span className="text-[11px] text-ink-300">total</span>
-              <span className="font-mono text-[11px] text-ink-100">{fmtMs(total)}</span>
+              <span className="text-label text-ink-300">total</span>
+              <span className="font-mono text-label text-ink-100">{fmtMs(total)}</span>
             </span>
           </div>
         </>
@@ -167,7 +167,7 @@ function Figure({ label, value }: { label: string; value: string }) {
     // measurement carry the row.
     <span className="inline-flex flex-col gap-0.5">
       <span className="label-caps text-[10px]">{label}</span>
-      <span className="font-mono text-[15px] font-medium tabular-nums leading-none text-ink-100">
+      <span className="font-mono text-ui font-medium tabular-nums leading-none text-ink-100">
         {value}
       </span>
     </span>

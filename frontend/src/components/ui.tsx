@@ -63,7 +63,7 @@ interface BadgeProps extends HTMLAttributes<HTMLSpanElement> {
   color?: string; // stage hue — used for text + border tint
 }
 
-export function Badge({ color = "#8B99B8", className, children, ...rest }: BadgeProps) {
+export function Badge({ color = "#94A6CC", className, children, ...rest }: BadgeProps) {
   return (
     <span
       className={clsx(
@@ -124,7 +124,7 @@ export function Segmented<T extends string>({
             // inverse of Button's raised state — so the two never look like the
             // same control. Inset shadow instead of a lift does that.
             value === opt.value
-              ? "bg-ink-700 text-ink-100 shadow-[inset_0_1px_3px_rgba(3,7,18,0.55)]"
+              ? "bg-ink-700 text-ink-100 shadow-[inset_0_1px_3px_rgba(2,5,12,0.55)]"
               : "text-ink-300 hover:bg-ink-800/60 hover:text-ink-100",
           )}
         >

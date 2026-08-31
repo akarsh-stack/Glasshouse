@@ -1,4 +1,6 @@
 import { Suspense, lazy, useEffect, useState } from "react";
+import { ChevronLeft, ChevronRight, Spinner } from "./components/icons";
+import { Wordmark } from "./components/Logo";
 import { Segmented } from "./components/ui";
 import type { Tier } from "./types";
 import { Playground } from "./views/Playground";
@@ -29,7 +31,9 @@ export default function App() {
   }, []);
 
   return (
-    <div className="flex h-screen flex-col">
+    // dvh rather than vh: on mobile browsers 100vh includes the retractable
+    // URL bar, so the header would sit under it until the user scrolls.
+    <div className="flex h-dvh flex-col">
       {/* slim header */}
       <header className="flex h-12 shrink-0 items-center gap-3 border-b border-ink-700 bg-ink-900 px-3">
         {view === "playground" && (
@@ -38,17 +42,18 @@ export default function App() {
             aria-label={railOpen ? "Collapse document rail" : "Expand document rail"}
             aria-expanded={railOpen}
             onClick={() => setRailOpen((o) => !o)}
-            className="rounded border border-ink-700 px-2 py-1 font-mono text-xs text-ink-300 transition-colors hover:bg-ink-800 hover:text-ink-100"
+            // 32px square: below the 44px ideal, but this is a pointer-first
+            // desktop instrument panel and the rail auto-collapses on touch
+            // widths, where this control isn't rendered at all.
+            className="grid h-8 w-8 place-items-center rounded border border-ink-700 text-ink-300 transition-colors duration-120 hover:bg-ink-800 hover:text-ink-100"
           >
-            {railOpen ? "⟨" : "⟩"}
+            {railOpen ? <ChevronLeft /> : <ChevronRight />}
           </button>
         )}
-        <h1 className="font-display text-base font-semibold tracking-tight text-ink-100">
-          Glasshouse
+
+        <h1 className="contents">
+          <Wordmark />
         </h1>
-        <span className="hidden font-mono text-[10px] uppercase tracking-[0.18em] text-ink-300 sm:inline">
-          rag pipeline, visible
-        </span>
 
         <div className="ml-auto flex items-center gap-2">
           <Segmented<View>
@@ -82,8 +87,11 @@ export default function App() {
         <div className="flex min-h-0 flex-1">
           <Suspense
             fallback={
-              <div className="flex flex-1 items-center justify-center">
-                <p className="font-mono text-xs text-ink-300">Loading dashboard…</p>
+              // Matches the dashboard's own loading language rather than a bare
+              // line of text, so the swap doesn't flash a different treatment.
+              <div className="flex flex-1 items-center justify-center gap-2 text-ink-300">
+                <Spinner />
+                <p className="font-mono text-xs">Loading dashboard…</p>
               </div>
             }
           >

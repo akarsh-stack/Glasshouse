@@ -1,6 +1,7 @@
 import logging
-import time
 from typing import AsyncGenerator
+
+from .llm import is_retryable
 
 logger = logging.getLogger(__name__)
 
@@ -13,10 +14,24 @@ class ModelRouter:
         self.config = config
 
     def route(self, query_text: str, user_tier_hint: str | None = None) -> str:
+        """Explicit hint wins; otherwise the configured default, promoted for
+        long queries.
+
+        The default comes from `LLM_DEFAULT_TIER` rather than a literal, which
+        is what that setting was always for — it shipped in config.py and
+        .env.example and was read by nothing.
+        """
         if user_tier_hint and user_tier_hint in TIERS:
             return user_tier_hint
-        words = len(query_text.split())
-        return "fast" if words < 50 else "quality"
+        default = self.config.LLM_DEFAULT_TIER
+        if default not in TIERS:
+            logger.warning(f"LLM_DEFAULT_TIER {default!r} is not a tier; using 'fast'")
+            default = "fast"
+        # A long query carries more context to reason over, so it is promoted
+        # one step — but never demoted below the configured floor.
+        if len(query_text.split()) >= 50 and TIERS.index(default) < TIERS.index("quality"):
+            return "quality"
+        return default
 
     async def generate_with_fallback(
         self,
@@ -57,6 +72,12 @@ class ModelRouter:
                     raise RuntimeError(
                         f"Generation failed partway through on tier {attempt_tier}: {e}"
                     ) from e
+                if not is_retryable(e):
+                    # Same credentials, same request shape, same outcome on every
+                    # tier. Walking the chain would triple the latency and then
+                    # report "all tiers failed", hiding the one useful message.
+                    logger.error(f"Tier {attempt_tier} failed permanently, not falling back: {e}")
+                    raise
                 logger.warning(f"Tier {attempt_tier} failed: {e}, trying next")
 
         raise RuntimeError(f"All tiers failed. Last error: {last_err}")

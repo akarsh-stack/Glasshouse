@@ -1,5 +1,5 @@
 import logging
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from ..services.observability import ObservabilityService
 from typing import Optional
 
@@ -16,6 +16,9 @@ def set_observability(svc: ObservabilityService):
 
 @router.get("/api/metrics")
 def get_metrics(window: str = "1h"):
+    # 503, not a 200 carrying an {"error": ...} body — the frontend types this
+    # response as MetricsData and would otherwise render a payload with every
+    # figure missing as though the window were simply empty.
     if _observability is None:
-        return {"error": "observability not ready"}
+        raise HTTPException(status_code=503, detail="Observability not ready")
     return _observability.get_metrics(window)

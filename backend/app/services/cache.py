@@ -67,12 +67,19 @@ class CacheLayer:
             value = self._lru.get(key)
 
         if value:
-            return {"hit": True, "tier": "exact", "response": value["response"], "similarity": 1.0}
+            return {
+                "hit": True,
+                "tier": "exact",
+                "response": value["response"],
+                # Entries written before chunks were cached have no "chunks" key.
+                "chunks": value.get("chunks", []),
+                "similarity": 1.0,
+            }
 
         # semantic match
         now = time.time()
         best_sim = 0.0
-        best_resp = None
+        best_entry = None
         polarity = _polarity(query_text)
         for entry in self._semantic_store:
             if entry["expires_at"] < now:
@@ -84,31 +91,52 @@ class CacheLayer:
             sim = _cosine(query_embedding, entry["embedding"])
             if sim > best_sim:
                 best_sim = sim
-                best_resp = entry["response"]
+                best_entry = entry
 
-        if best_sim >= self.config.SEMANTIC_CACHE_THRESHOLD and best_resp is not None:
-            return {"hit": True, "tier": "semantic", "response": best_resp, "similarity": best_sim}
+        if best_sim >= self.config.SEMANTIC_CACHE_THRESHOLD and best_entry is not None:
+            return {
+                "hit": True,
+                "tier": "semantic",
+                "response": best_entry["response"],
+                "chunks": best_entry["chunks"],
+                "similarity": best_sim,
+            }
 
-        return {"hit": False, "tier": None, "response": None, "similarity": None}
+        return {"hit": False, "tier": None, "response": None, "chunks": [], "similarity": None}
 
-    async def set(self, query_text: str, query_embedding: list[float], response_text: str) -> None:
+    async def set(
+        self,
+        query_text: str,
+        query_embedding: list[float],
+        response_text: str,
+        chunks: list[dict] | None = None,
+    ) -> None:
+        """Cache the answer *and* the chunks that grounded it.
+
+        Storing the chunks is what lets a cache hit skip retrieval outright: the
+        UI still gets its retrieval panel, but no embedding is compared and no
+        vector search runs. Without them a "free" hit would still have to pay
+        for a search just to populate the display.
+        """
         key = self._exact_key(query_text)
-        payload = json.dumps({"response": response_text})
+        chunks = chunks or []
+        payload = json.dumps({"response": response_text, "chunks": chunks})
         ttl = self.config.CACHE_TTL
 
         if self.redis:
             try:
                 await self.redis.setex(key, ttl, payload)
             except Exception:
-                self._lru[key] = {"response": response_text}
+                self._lru[key] = {"response": response_text, "chunks": chunks}
         else:
-            self._lru[key] = {"response": response_text}
+            self._lru[key] = {"response": response_text, "chunks": chunks}
 
         expires_at = time.time() + ttl
         self._semantic_store.append({
             "key": key,
             "embedding": query_embedding,
             "response": response_text,
+            "chunks": chunks,
             "expires_at": expires_at,
             "polarity": _polarity(query_text),
         })

@@ -10,20 +10,32 @@ class RetrievalOrchestrator:
         self.vector_store = vector_store
         self.config = config
 
-    async def retrieve(
+    async def embed_query(self, query_text: str) -> tuple[list[float], float]:
+        """Embed once, and report how long it took.
+
+        Split out from `search` because the caller needs the vector *before* it
+        knows whether retrieval will happen at all: the cache is consulted with
+        this embedding, and a hit means no vector search. Returning the timing
+        here rather than measuring around the call is what lets the trace carry
+        a real `embed_ms` instead of folding it into retrieval.
+        """
+        t0 = time.monotonic()
+        embedding = await self.embedding_service.embed_one(query_text)
+        return embedding, (time.monotonic() - t0) * 1000
+
+    async def search(
         self,
-        query_text: str,
+        embedding: list[float],
         top_k: int | None = None,
         score_threshold: float | None = None,
         token_budget: int | None = None,
-    ) -> dict:
+    ) -> tuple[list[dict], float]:
+        """Vector search plus gating, for an embedding the caller already has."""
         top_k = top_k or self.config.TOP_K
         score_threshold = score_threshold if score_threshold is not None else self.config.SCORE_THRESHOLD
         token_budget = token_budget or self.config.TOKEN_BUDGET
 
         t0 = time.monotonic()
-        embedding = await self.embedding_service.embed_one(query_text)
-        embed_ms = (time.monotonic() - t0) * 1000
 
         # Ask the store for top_k unfiltered, then gate *relative to the best
         # hit*. Absolute cosine cutoffs don't survive contact with real data:
@@ -51,4 +63,10 @@ class RetrievalOrchestrator:
             selected.append(chunk)
             used_tokens += tokens
 
-        return {"chunks": selected, "embed_ms": embed_ms}
+        return selected, (time.monotonic() - t0) * 1000
+
+    async def retrieve(self, query_text: str, **kwargs) -> dict:
+        """Embed then search. Kept for callers that have no cache to consult."""
+        embedding, embed_ms = await self.embed_query(query_text)
+        chunks, retrieve_ms = await self.search(embedding, **kwargs)
+        return {"chunks": chunks, "embed_ms": embed_ms, "retrieve_ms": retrieve_ms}

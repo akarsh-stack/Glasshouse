@@ -1,28 +1,44 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 from sqlmodel import Field, SQLModel, create_engine, Session
 import uuid
 
-DATABASE_URL = "sqlite:///./glasshouse.db"
-engine = create_engine(DATABASE_URL, echo=False)
+from .config import config
+
+# check_same_thread=False because SQLModel sessions are opened both on the event
+# loop (trace writes) and in FastAPI's threadpool (sync endpoints).
+engine = create_engine(
+    config.DATABASE_URL, echo=False, connect_args={"check_same_thread": False}
+)
 
 
 def gen_id() -> str:
     return str(uuid.uuid4())
 
 
+def utcnow() -> datetime:
+    """Naive UTC, the way this schema stores time.
+
+    `datetime.utcnow()` is deprecated, but its timezone-aware replacement would
+    change what lands in SQLite: an aware value serialises with an offset while
+    every existing row is naive, and the two don't compare. So take the aware
+    reading and drop the tzinfo deliberately, rather than by accident.
+    """
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
 class Document(SQLModel, table=True):
     id: str = Field(default_factory=gen_id, primary_key=True)
     filename: str
-    uploaded_at: datetime = Field(default_factory=datetime.utcnow)
+    uploaded_at: datetime = Field(default_factory=utcnow)
     status: str = "processing"
     chunk_count: int = 0
-    content_hash: str
+    content_hash: str = Field(index=True)
 
 
 class Chunk(SQLModel, table=True):
     id: str = Field(default_factory=gen_id, primary_key=True)
-    document_id: str = Field(foreign_key="document.id")
+    document_id: str = Field(foreign_key="document.id", index=True)
     text: str
     chunk_index: int
     page_number: Optional[int] = None
@@ -31,7 +47,8 @@ class Chunk(SQLModel, table=True):
 class QueryLog(SQLModel, table=True):
     id: str = Field(default_factory=gen_id, primary_key=True)
     query_text: str
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    # Indexed: every metrics call filters on it, and this table only grows.
+    timestamp: datetime = Field(default_factory=utcnow, index=True)
     cache_status: str = "miss"
     model_used: str = ""
     retrieved_chunk_ids: str = "[]"
@@ -46,15 +63,6 @@ class QueryLog(SQLModel, table=True):
     error_message: str = ""
     # Kept apart from `error`: a 429 means the rate limiter did its job.
     rate_limited: bool = False
-
-
-class CacheEntry(SQLModel, table=True):
-    id: str = Field(default_factory=gen_id, primary_key=True)
-    normalized_query: str
-    response_text: str
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    ttl: int = 3600
-    hit_count: int = 0
 
 
 def init_db():

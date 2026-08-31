@@ -1,0 +1,91 @@
+{
+  "_comment": [
+    "Question -> the passage that answers it, for the two sample documents.",
+    "",
+    "A chunk is judged relevant when its text contains `expect_substring`. That is",
+    "deliberately not a chunk id: ids are uuids minted fresh on every ingest, and",
+    "chunk boundaries are exactly what a chunking change moves. Anchoring on a",
+    "distinctive fact from the answering passage keeps the golden set valid across",
+    "re-chunking, which is the change this eval exists to measure.",
+    "",
+    "Questions are phrased the way a person asks them, not by echoing the passage.",
+    "Question->passage cosine for a correct match sits around 0.2-0.6 precisely",
+    "because the two are different registers; a golden set written by copying",
+    "sentences out of the corpus would measure paraphrase matching instead of",
+    "retrieval and would score near-perfectly while proving nothing."
+  ],
+  "cases": [
+    {
+      "id": "altitude",
+      "question": "What altitude does the station orbit at?",
+      "source": "orbital-mechanics-notes.md",
+      "expect_substring": "412 kilometres"
+    },
+    {
+      "id": "solar-power",
+      "question": "How much power do the solar arrays generate?",
+      "source": "orbital-mechanics-notes.md",
+      "expect_substring": "84 kilowatts"
+    },
+    {
+      "id": "gyroscope-failure",
+      "question": "What happens if the control moment gyroscopes fail?",
+      "source": "orbital-mechanics-notes.md",
+      "expect_substring": "thruster-based control"
+    },
+    {
+      "id": "waste-heat",
+      "question": "How is waste heat rejected?",
+      "source": "orbital-mechanics-notes.md",
+      "expect_substring": "ammonia loops"
+    },
+    {
+      "id": "water-recovery",
+      "question": "How much water does life support recycle?",
+      "source": "orbital-mechanics-notes.md",
+      "expect_substring": "93 percent"
+    },
+    {
+      "id": "debris-screening",
+      "question": "How far in advance are conjunction assessments screened?",
+      "source": "orbital-mechanics-notes.md",
+      "expect_substring": "72 hours"
+    },
+    {
+      "id": "reboost-cadence",
+      "question": "How often does the station raise its orbit?",
+      "source": "orbital-mechanics-notes.md",
+      "expect_substring": "every six weeks"
+    },
+    {
+      "id": "eclipse-batteries",
+      "question": "What carries the station through eclipse?",
+      "source": "orbital-mechanics-notes.md",
+      "expect_substring": "ampere-hours"
+    },
+    {
+      "id": "reproducible-builds",
+      "question": "Are builds reproducible?",
+      "source": "meridian-release-notes.pdf",
+      "expect_substring": "byte-identical"
+    },
+    {
+      "id": "incremental-linking",
+      "question": "What did incremental linking improve?",
+      "source": "meridian-release-notes.pdf",
+      "expect_substring": "41 seconds to 6"
+    },
+    {
+      "id": "diagnostics",
+      "question": "What extra information do error messages include now?",
+      "source": "meridian-release-notes.pdf",
+      "expect_substring": "inferred type"
+    },
+    {
+      "id": "32bit-limitation",
+      "question": "What limitation affects 32-bit targets?",
+      "source": "meridian-release-notes.pdf",
+      "expect_substring": "split debug"
+    }
+  ]
+}

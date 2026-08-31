@@ -1,29 +1,54 @@
 import hashlib
 import logging
 import uuid
-from datetime import datetime
 
 from sqlmodel import Session, select
 
-from ..models import Chunk, Document
+from ..models import Chunk, Document, utcnow
 
 logger = logging.getLogger(__name__)
 
 
-def _extract_text(file_bytes: bytes, filename: str) -> str:
+class UnsupportedDocument(Exception):
+    """The upload could not be read. The caller's problem, so a 4xx, not a 500."""
+
+
+def _extract_pages(file_bytes: bytes, filename: str) -> list[tuple[str, int | None]]:
+    """Return [(text, page_number)], one entry per page for paginated formats.
+
+    Paginated formats yield a page number; formats without pagination yield
+    `None`, which is what the UI's `p.{n}` badge keys off. Extraction used to
+    join every PDF page into one string before chunking, so `page_number` was
+    `None` for every chunk in the system and the badge was unreachable.
+    """
     name = filename.lower()
     if name.endswith(".pdf"):
         import io
         from pypdf import PdfReader
-        reader = PdfReader(io.BytesIO(file_bytes))
-        return "\n".join(page.extract_text() or "" for page in reader.pages)
-    elif name.endswith(".docx"):
+        from pypdf.errors import PdfReadError
+
+        try:
+            reader = PdfReader(io.BytesIO(file_bytes))
+            # 1-based: "page 1" is what a reader sees, and the badge exists to be
+            # compared against the source document by a human.
+            return [(page.extract_text() or "", i) for i, page in enumerate(reader.pages, 1)]
+        except (PdfReadError, OSError, ValueError) as e:
+            raise UnsupportedDocument(f"Could not read {filename} as a PDF: {e}") from e
+
+    if name.endswith(".docx"):
         import io
         from docx import Document as DocxDocument
-        doc = DocxDocument(io.BytesIO(file_bytes))
-        return "\n".join(p.text for p in doc.paragraphs)
-    else:
-        return file_bytes.decode("utf-8", errors="replace")
+        from docx.opc.exceptions import PackageNotFoundError
+
+        try:
+            doc = DocxDocument(io.BytesIO(file_bytes))
+        except (PackageNotFoundError, OSError, ValueError, KeyError) as e:
+            raise UnsupportedDocument(f"Could not read {filename} as a .docx: {e}") from e
+        # .docx has no reliable page breaks without rendering, so it is treated
+        # as one unpaginated body rather than guessing at boundaries.
+        return [("\n".join(p.text for p in doc.paragraphs), None)]
+
+    return [(file_bytes.decode("utf-8", errors="replace"), None)]
 
 
 class IngestService:
@@ -33,24 +58,43 @@ class IngestService:
         self.vector_store = vector_store
 
     async def ingest_document(self, file_bytes: bytes, filename: str, db: Session) -> Document:
+        if not file_bytes.strip():
+            raise UnsupportedDocument(f"{filename} is empty")
+
         content_hash = hashlib.sha256(file_bytes).hexdigest()
         existing = db.exec(select(Document).where(Document.content_hash == content_hash)).first()
         if existing:
             return existing
 
+        # Extract and chunk *before* inserting the Document row. A file that
+        # can't be read should leave no trace; the previous order inserted a row,
+        # then marked it "error" and re-raised, leaving debris in the document
+        # rail after every bad upload.
+        pages = _extract_pages(file_bytes, filename)
+        raw_chunks: list[dict] = []
+        for text, page_number in pages:
+            if not text.strip():
+                continue
+            for chunk in self.chunker.chunk(text, {"page_number": page_number}):
+                # Chunkers index from 0 on every call, so a per-page index would
+                # collide across pages. Renumber across the whole document.
+                chunk["chunk_index"] = len(raw_chunks)
+                raw_chunks.append(chunk)
+
+        if not raw_chunks:
+            raise UnsupportedDocument(f"No readable text found in {filename}")
+
         doc = Document(
             filename=filename,
             content_hash=content_hash,
             status="processing",
-            uploaded_at=datetime.utcnow(),
+            uploaded_at=utcnow(),
         )
         db.add(doc)
         db.commit()
         db.refresh(doc)
 
         try:
-            text = _extract_text(file_bytes, filename)
-            raw_chunks = self.chunker.chunk(text, {})
             texts = [c["text"] for c in raw_chunks]
             embeddings = await self.embedding_service.embed_batch(texts)
 
@@ -73,14 +117,16 @@ class IngestService:
                     "page_number": c.get("page_number"),
                 })
 
-            self.vector_store.upsert(chunk_dicts, embeddings)
+            # Rows first, vectors second. The reverse order can leave vectors in
+            # Chroma with no row to delete them by, and `delete_by_document`
+            # would then never reach them.
             for cr in chunk_records:
                 db.add(cr)
-
             doc.chunk_count = len(chunk_records)
             doc.status = "ready"
             db.add(doc)
             db.commit()
+            self.vector_store.upsert(chunk_dicts, embeddings)
             db.refresh(doc)
         except Exception as e:
             logger.error(f"Ingestion failed for {filename}: {e}")

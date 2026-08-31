@@ -4,7 +4,7 @@ import time
 import uuid
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
@@ -39,7 +39,7 @@ class QueryRequest(BaseModel):
     session_id: Optional[str] = None
 
 
-async def _enforce_rate_limit(req: QueryRequest) -> None:
+async def _enforce_rate_limit(req: QueryRequest, client_ip: Optional[str] = None) -> None:
     """Reject over-budget requests with a real 429 before streaming starts.
 
     This deliberately runs *outside* the SSE generator. Once a StreamingResponse
@@ -57,7 +57,9 @@ async def _enforce_rate_limit(req: QueryRequest) -> None:
     if not _rate_limiter:
         return
 
-    result = await _rate_limiter.check_and_consume(req.session_id or "anonymous")
+    result = await _rate_limiter.check_and_consume(
+        req.session_id or "anonymous", client_ip=client_ip
+    )
     if result["allowed"]:
         return
 
@@ -91,37 +93,31 @@ async def _stream(req: QueryRequest):
     if trace:
         trace.query_text = req.query
 
-    # retrieval
-    t0 = time.monotonic()
-    chunks = []
+    # 1. Embed. Exactly once per request: the same vector is what the cache is
+    #    keyed on semantically *and* what the vector store is searched with, so
+    #    computing it twice was paying the batch window twice for one answer.
+    query_embedding: list[float] = []
     embed_ms = 0.0
     if _retrieval:
         try:
-            ret = await _retrieval.retrieve(req.query)
-            chunks = ret["chunks"]
-            embed_ms = ret["embed_ms"]
+            query_embedding, embed_ms = await _retrieval.embed_query(req.query)
         except Exception as e:
-            logger.warning(f"Retrieval failed: {e}")
+            logger.warning(f"Embedding failed: {e}")
+    embed_ms = round(embed_ms, 2)
     if trace:
-        _observability.record_stage(trace, "retrieval_ms", (time.monotonic() - t0) * 1000)
-        trace.retrieved_chunks = chunks
+        _observability.record_stage(trace, "embed_ms", embed_ms)
 
-    yield sse({"type": "retrieval", "chunks": chunks})
-
-    # cache check
-    query_embedding = []
-    if _retrieval:
-        try:
-            query_embedding = await _retrieval.embedding_service.embed_one(req.query)
-        except Exception:
-            pass
-
-    cache_result = {"hit": False, "tier": None, "response": None, "similarity": None}
+    # 2. Cache, *before* retrieval. A cache exists to skip downstream work; the
+    #    previous order retrieved first and then discovered the answer was
+    #    already known, so a "free" hit still paid for a vector search.
+    t_cache = time.monotonic()
+    cache_result = {"hit": False, "tier": None, "response": None, "chunks": [], "similarity": None}
     if _cache and query_embedding:
         try:
             cache_result = await _cache.get(req.query, query_embedding)
         except Exception as e:
             logger.warning(f"Cache get failed: {e}")
+    cache_ms = round((time.monotonic() - t_cache) * 1000, 2)
 
     cache_status = "miss"
     if cache_result["hit"]:
@@ -129,10 +125,28 @@ async def _stream(req: QueryRequest):
 
     if trace:
         trace.cache_status = cache_status
+        _observability.record_stage(trace, "cache_ms", cache_ms)
 
-    yield sse({"type": "cache", "status": cache_status, "similarity": cache_result["similarity"]})
+    yield sse({
+        "type": "cache",
+        "status": cache_status,
+        "similarity": cache_result["similarity"],
+        "embed_ms": embed_ms,
+        "cache_ms": cache_ms,
+    })
 
     if cache_result["hit"]:
+        # The chunks were cached with the answer, so the retrieval panel still
+        # fills — at zero cost, which is the point.
+        cached_chunks = cache_result.get("chunks") or []
+        if trace:
+            trace.retrieved_chunks = cached_chunks
+        yield sse({
+            "type": "retrieval",
+            "chunks": cached_chunks,
+            "retrieve_ms": 0.0,
+            "from_cache": True,
+        })
         yield sse({"type": "chunk", "text": cache_result["response"]})
         if trace:
             _observability.finish_trace(trace)
@@ -153,7 +167,27 @@ async def _stream(req: QueryRequest):
         })
         return
 
-    # LLM generation
+    # 3. Retrieval, reusing the embedding from step 1.
+    chunks: list[dict] = []
+    retrieve_ms = 0.0
+    if _retrieval and query_embedding:
+        try:
+            chunks, retrieve_ms = await _retrieval.search(query_embedding)
+        except Exception as e:
+            logger.warning(f"Retrieval failed: {e}")
+    retrieve_ms = round(retrieve_ms, 2)
+    if trace:
+        _observability.record_stage(trace, "retrieval_ms", retrieve_ms)
+        trace.retrieved_chunks = chunks
+
+    yield sse({
+        "type": "retrieval",
+        "chunks": chunks,
+        "retrieve_ms": retrieve_ms,
+        "from_cache": False,
+    })
+
+    # 4. LLM generation
     tier = _llm_router.route(req.query, req.tier_hint) if _llm_router else "quality"
     full_response = []
     tokens_in = tokens_out = 0
@@ -190,10 +224,10 @@ async def _stream(req: QueryRequest):
         trace.cost_usd = cost_usd
         trace.model_used = model_used
 
-    # cache store
+    # cache store — chunks included, so a future hit can skip retrieval too
     if _cache and query_embedding and full_response:
         try:
-            await _cache.set(req.query, query_embedding, "".join(full_response))
+            await _cache.set(req.query, query_embedding, "".join(full_response), chunks)
         except Exception as e:
             logger.warning(f"Cache set failed: {e}")
 
@@ -217,9 +251,11 @@ async def _stream(req: QueryRequest):
 
 
 @router.post("/api/query")
-async def query_endpoint(req: QueryRequest):
+async def query_endpoint(req: QueryRequest, request: Request):
     # Must precede the StreamingResponse: see _enforce_rate_limit's docstring.
-    await _enforce_rate_limit(req)
+    # The IP comes off the socket rather than X-Forwarded-For, which a client
+    # can set freely — see TokenBucketRateLimiter's docstring.
+    await _enforce_rate_limit(req, request.client.host if request.client else None)
     return StreamingResponse(
         _stream(req),
         media_type="text/event-stream",

@@ -8,7 +8,7 @@ from typing import Optional
 
 from sqlmodel import Session, select
 
-from ..models import QueryLog
+from ..models import QueryLog, utcnow
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +27,7 @@ class RequestTrace:
     error_message: str = ""
     rate_limited: bool = False
     retrieved_chunks: list = field(default_factory=list)
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=utcnow)
     query_text: str = ""
     _start: float = field(default_factory=time.monotonic, repr=False)
 
@@ -66,14 +66,54 @@ class ObservabilityService:
         except Exception as e:
             logger.error(f"Failed to save trace {trace.request_id}: {e}")
 
+    def prune_traces(self, retention_hours: int) -> int:
+        """Delete traces older than the retention window. Returns rows removed.
+
+        The metrics endpoint only ever queries a bounded window (1h/24h/7d), so
+        anything older is storage cost with no reader. Called once at startup —
+        a cron would be the production answer, but a single-process demo that
+        prunes on boot is honest about what it is.
+        """
+        cutoff = utcnow() - timedelta(hours=retention_hours)
+        with Session(self.engine) as db:
+            stale = db.exec(select(QueryLog).where(QueryLog.timestamp < cutoff)).all()
+            for row in stale:
+                db.delete(row)
+            db.commit()
+            return len(stale)
+
     def get_trace(self, request_id: str) -> Optional[QueryLog]:
         with Session(self.engine) as db:
             return db.get(QueryLog, request_id)
 
+    @staticmethod
+    def _empty_metrics(window: str) -> dict:
+        """The same keys the populated case returns, zeroed.
+
+        An empty window used to return just `{window, total_requests}`, which
+        forced every consumer to treat all twelve figures as optional and made
+        "no traffic" indistinguishable from "field missing".
+        """
+        return {
+            "window": window,
+            "total_requests": 0,
+            "served_requests": 0,
+            "observed_span_sec": 0.0,
+            "req_per_sec": 0,
+            "cache_hit_rate": 0,
+            "error_rate": 0,
+            "rate_limited_count": 0,
+            "latency_p50_ms": 0,
+            "latency_p95_ms": 0,
+            "latency_p99_ms": 0,
+            "total_cost_usd": 0.0,
+            "model_breakdown": {},
+        }
+
     def get_metrics(self, window: str = "1h") -> dict:
         windows = {"1h": 1, "24h": 24, "7d": 168}
         hours = windows.get(window, 1)
-        since = datetime.utcnow() - timedelta(hours=hours)
+        since = utcnow() - timedelta(hours=hours)
 
         with Session(self.engine) as db:
             logs = db.exec(
@@ -81,7 +121,7 @@ class ObservabilityService:
             ).all()
 
         if not logs:
-            return {"window": window, "total_requests": 0}
+            return self._empty_metrics(window)
 
         # Two populations, deliberately kept apart. Everything that arrived
         # (`logs`) drives the counts; only what was *admitted* (`served`) drives
@@ -125,20 +165,32 @@ class ObservabilityService:
             if log.model_used:
                 model_counts[log.model_used] = model_counts.get(log.model_used, 0) + 1
 
-        duration_sec = hours * 3600
+        # Rate over the span traffic actually arrived in, not over the window.
+        # Dividing by the window length reports a 30-second load test inside a
+        # 1h window as 0.06 req/s — the demo the README asks you to run looked
+        # like idle traffic. The floor keeps a single request finite.
+        timestamps = [l.timestamp for l in logs]
+        observed_span_sec = max(1.0, (max(timestamps) - min(timestamps)).total_seconds())
+
         return {
             "window": window,
             # Arrivals, not admissions — this is offered load, and a shed request
             # is still traffic that arrived.
             "total_requests": n,
             "served_requests": n_served,
-            "req_per_sec": round(n / duration_sec, 4),
+            # Published so the rate can be read in context: 20 requests over 9s
+            # is a burst, over 3600s it is a trickle, and req_per_sec alone
+            # cannot tell you which.
+            "observed_span_sec": round(observed_span_sec, 2),
+            "req_per_sec": round(n / observed_span_sec, 4),
             "cache_hit_rate": round(cache_hits / n_served, 4) if n_served else 0,
             "error_rate": round(errors / n_served, 4) if n_served else 0,
             "rate_limited_count": rate_limited,
             "latency_p50_ms": percentile(50),
             "latency_p95_ms": percentile(95),
             "latency_p99_ms": percentile(99),
-            "total_cost_usd": round(sum(l.cost_usd for l in logs), 6),
+            # Served, not all arrivals — a shed request spent nothing, and the
+            # rest of this payload already follows that rule.
+            "total_cost_usd": round(sum(l.cost_usd for l in served), 6),
             "model_breakdown": model_counts,
         }

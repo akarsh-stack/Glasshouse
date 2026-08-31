@@ -78,6 +78,50 @@ nothing. A weak-but-best chunk with a visibly low score beats a silent
 no-context answer: the user can see the system was unsure, which is the whole
 premise of the product.
 
+## Measured, after the fact — and it revises the claim above
+
+This ADR was originally written from a single dramatic failure. There is now a
+12-question golden set over the sample corpus (`backend/eval/golden_set.json`)
+and a harness that runs the real chunker, real ONNX embeddings and a real Chroma
+collection: `python -m eval.run_eval [--chunker fixed]`.
+
+| Metric | structural | fixed 220-word |
+|---|---|---|
+| recall@1 | 0.917 | 0.917 |
+| recall@3 | 1.000 | 1.000 |
+| MRR | 0.958 | 0.944 |
+| context precision (survives gating) | **1.000** | 0.917 |
+| mean score of the correct chunk | **0.507** | 0.363 |
+| mean margin over the best wrong chunk | **0.204** | 0.149 |
+| chunks indexed | 9 | 4 |
+
+**Two of these numbers are identical, and that matters.** Rank is essentially the
+same either way — fixed-width chunking still puts the right passage first 11
+times out of 12. The claim at the top of this document, that fixed chunking
+"returned zero chunks for a question the corpus plainly answered", does not
+reproduce today, and `--before` (fixed chunks plus the original absolute 0.3
+floor) doesn't reproduce it either. The reason is that the *other* half of this
+decision — relative gating, plus the "return the top chunk rather than nothing"
+guard — rescues fixed chunking almost completely. The two fixes overlap, and
+the gating one was doing most of the work.
+
+**Where structural genuinely wins is signal strength, not rank.** The correct
+chunk scores 40% higher (0.507 vs 0.363) and beats the best wrong chunk by a 37%
+wider margin (0.204 vs 0.149). That is exactly the grab-bag mechanism this ADR
+describes — a chunk averaging four topics points at none of them — and it is the
+property that decays as a corpus grows. On nine chunks a 0.15 margin is enough;
+on ninety thousand it is not. The one case where it already bites is
+`debris-screening`, where fixed chunking retrieves the right passage at rank 3
+and then *gates it out of the prompt entirely* — the model never sees it. That
+is the 0.917 context precision above, and it is the failure mode that matters,
+because a passage retrieved but not delivered is a passage that may as well not
+exist.
+
+So: structural chunking stays, on evidence, but the honest summary is "a
+consistently stronger signal and one fewer dropped passage", not "the difference
+between working and broken". The dramatic framing earlier in this document
+reflects a one-off observation that the eval does not support.
+
 ## Consequences
 
 **Measured effect.** On the query that returned nothing, retrieval now returns

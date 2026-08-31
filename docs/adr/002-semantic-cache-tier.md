@@ -51,10 +51,27 @@ actual bands on this corpus with `all-MiniLM-L6-v2`:
 
 | Query relationship | Observed cosine | Should hit? |
 | --- | --- | --- |
-| Same intent, reworded | 0.67 – 0.96 | yes |
-| **Negation of a cached query** | **0.825** | **no** |
-| Related but distinct topic | 0.35 – 0.40 | no |
-| Unrelated | < 0.10 | no |
+| Same intent, reworded | 0.67 – 0.99 | yes |
+| **Negation of a cached query** | **0.825 – 0.982** | **no** |
+| Related but distinct topic | 0.26 – 0.40 | no |
+| Unrelated | < 0.15 | no |
+
+The bands overlap, and that overlap is the entire finding. Taking the demo pair
+in README step 4 against the base question "How much water does life support
+recycle?":
+
+| Variant | Cosine | Verdict |
+| --- | --- | --- |
+| "What **percentage** of water does life support recycle?" | 0.942 | hit |
+| "How much water does life support **not** recycle?" | **0.982** | miss (polarity) |
+| "How much power do the solar arrays generate?" | 0.256 | miss |
+| "What is the capital of France?" | 0.134 | miss |
+
+The negation scores **higher than the genuine paraphrase**. Any threshold that
+admits the one admits the other. These four numbers are asserted in
+`backend/tests/test_semantic_cache_corpus.py`, because an earlier version of this
+README documented a "paraphrase" that actually scored 0.626 and therefore missed
+— the doc claimed a hit the code could never produce.
 
 Two things fall out of that table. First, same-intent paraphrases bottom out
 around 0.67, so any threshold above ~0.9 rejects most genuine repeats — the
@@ -65,8 +82,9 @@ between 0.67 and 0.80 are misses we accept in exchange for it.
 
 Second, and more importantly: **negation is not separable by cosine at any
 threshold.** "Is the linker able to emit split debug info?" against "is the linker
-*not* able to…" scores 0.825 — above two thirds of the paraphrase band. There is
-no value that admits real paraphrases and excludes that. The reason is structural,
+*not* able to…" scores 0.825 — above two thirds of the paraphrase band — and the
+water-recovery pair above reaches 0.982, higher than any paraphrase of it. There
+is no value that admits real paraphrases and excludes that. The reason is structural,
 not a tuning failure: negation is a one-token lexical change carrying a total
 semantic inversion, and a bi-encoder trained for topical similarity barely
 registers it.

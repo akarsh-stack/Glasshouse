@@ -199,6 +199,29 @@ use: indeterminate progress. Under `prefers-reduced-motion` it slows to 2.4s
 rather than stopping, because freezing the only "still alive" signal reads as a
 hung UI.
 
+## The boot screen
+
+The mark, given depth: a glass slab built from six translucent faces in CSS 3D,
+turning slowly on a 14-second cycle while the four beams stay fixed in the plane
+of the screen. Light passing through turning glass — the same idea the flat mark
+states, with the thing it passes through now visible.
+
+**It exists because of a defect, not to have somewhere to put an animation.**
+With the backend down the UI rendered perfectly and then failed three separate
+ways: an empty document rail, a query that errored, metrics that never arrived.
+The gate polls `/api/health` and holds the app back until the backend answers,
+which turns three confusing failures into one clear statement. After six seconds
+it shows the command to start the backend, and a way through so the frontend can
+still be inspected offline.
+
+**CSS 3D rather than WebGL.** three.js is ~150 KB gzipped against a bundle that
+is 92 KB — roughly tripling first load to decorate a screen most people see for
+under two seconds. Every face here is a div the compositor already knows how to
+draw. Beams sit outside the rotating rig deliberately: inside it they
+foreshorten to nothing every half turn, which reads as a rendering fault rather
+than a rotation. Under `prefers-reduced-motion` the slab parks at an angle
+showing three faces, so it still reads as a solid.
+
 ## Everything else stays quiet
 
 One bold moment (the trace). Panels are flat ink with hairline borders, no

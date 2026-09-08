@@ -17,7 +17,12 @@
     "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
-    "noFallthroughCasesInSwitch": true
+    "noFallthroughCasesInSwitch": true,
+
+    // jest-dom augments vitest's Assertion interface (toBeInTheDocument,
+    // toHaveFocus, ...). Without it the component tests pass at runtime but
+    // `tsc -b` rejects every matcher, so CI would go red on green tests.
+    "types": ["vitest/globals", "@testing-library/jest-dom"]
   },
-  "include": ["src"]
+  "include": ["src", "vitest.setup.ts"]
 }

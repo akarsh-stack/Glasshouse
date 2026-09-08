@@ -4,6 +4,7 @@ import logging
 import time
 from typing import Optional
 
+import numpy as np
 from cachetools import LRUCache
 
 logger = logging.getLogger(__name__)
@@ -47,6 +48,17 @@ class CacheLayer:
         self.redis = redis_client
         self._lru: LRUCache = LRUCache(maxsize=256)
         self._semantic_store: list[dict] = []  # {key, embedding, response, expires_at}
+        # Row-aligned with _semantic_store, rebuilt lazily. Converting 512x384
+        # Python floats to numpy on every lookup cost more than the dot product
+        # it fed; building once per write and reusing it is ~50x cheaper.
+        self._matrix: Optional[np.ndarray] = None
+
+    def _embedding_matrix(self) -> np.ndarray:
+        if self._matrix is None:
+            self._matrix = np.asarray(
+                [e["embedding"] for e in self._semantic_store], dtype=np.float32
+            )
+        return self._matrix
 
     def _exact_key(self, text: str) -> str:
         return "gh:exact:" + hashlib.sha256(_normalize(text).encode()).hexdigest()
@@ -76,22 +88,40 @@ class CacheLayer:
                 "similarity": 1.0,
             }
 
-        # semantic match
+        # Semantic match, vectorised.
+        #
+        # This was a Python loop calling _cosine per entry — on a full store
+        # that is 512 x 384 multiply-adds one float at a time, on the request
+        # path, in a project about latency. numpy is already a dependency
+        # (chromadb pulls it), so the loop was costing something for nothing.
+        #
+        # Candidates are filtered *before* the dot product rather than after:
+        # an expired or opposite-polarity entry should never be measured
+        # against, and skipping them shrinks the matrix as well.
         now = time.time()
-        best_sim = 0.0
-        best_entry = None
         polarity = _polarity(query_text)
-        for entry in self._semantic_store:
-            if entry["expires_at"] < now:
-                continue
-            # Refuse to serve an affirmative answer to a negated question, or vice
-            # versa, however close the vectors are.
-            if entry["polarity"] != polarity:
-                continue
-            sim = _cosine(query_embedding, entry["embedding"])
-            if sim > best_sim:
-                best_sim = sim
-                best_entry = entry
+        rows: list[int] = []
+        candidates: list[dict] = []
+        for i, entry in enumerate(self._semantic_store):
+            if entry["expires_at"] >= now and entry["polarity"] == polarity:
+                rows.append(i)
+                candidates.append(entry)
+
+        if not candidates:
+            return {"hit": False, "tier": None, "response": None, "chunks": [], "similarity": None}
+
+        matrix = self._embedding_matrix()[rows]
+        query = np.asarray(query_embedding, dtype=np.float32)
+
+        norms = np.linalg.norm(matrix, axis=1) * np.linalg.norm(query)
+        # A zero-norm row would divide by zero; those entries score 0, matching
+        # what the scalar implementation returned for a degenerate vector.
+        with np.errstate(divide="ignore", invalid="ignore"):
+            sims = np.where(norms > 0, matrix @ query / norms, 0.0)
+
+        best_index = int(np.argmax(sims))
+        best_sim = float(sims[best_index])
+        best_entry = candidates[best_index] if best_sim > 0 else None
 
         if best_sim >= self.config.SEMANTIC_CACHE_THRESHOLD and best_entry is not None:
             return {
@@ -143,3 +173,9 @@ class CacheLayer:
         # keep store bounded
         if len(self._semantic_store) > 512:
             self._semantic_store = self._semantic_store[-512:]
+
+        # Both paths above changed the store, so the cached matrix no longer
+        # lines up with it. Invalidate rather than patch: an append is one row
+        # but the truncation reindexes everything, and a stale matrix would
+        # silently return the wrong entry's answer.
+        self._matrix = None

@@ -165,6 +165,64 @@
   transform-origin: center;
 }
 
+/* --- boot screen: the glasshouse in three dimensions ------------------- */
+
+/* Rotation is on the Y axis with a fixed X tilt, so the slab is read from
+   slightly above — an object on a bench rather than a logo spinning on a page.
+   14s is deliberately slow: this is ambient while you wait, not a spinner. */
+@keyframes gh3d-turn {
+  from {
+    transform: rotateX(-14deg) rotateY(0deg);
+  }
+  to {
+    transform: rotateX(-14deg) rotateY(360deg);
+  }
+}
+
+.gh3d-rig {
+  position: relative;
+  transform-style: preserve-3d;
+  animation: gh3d-turn 14s linear infinite;
+}
+
+/* Reduced motion keeps the dimensionality but stops the turn, parked at an
+   angle that shows three faces so it still reads as a solid. */
+.gh3d-rig-static {
+  position: relative;
+  transform-style: preserve-3d;
+  transform: rotateX(-14deg) rotateY(-32deg);
+}
+
+/* Beams breathe rather than blink — the brightness floor stays high enough
+   that the fan never disappears, which would read as a dropped frame. */
+@keyframes gh3d-beam-pulse {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.gh3d-beam {
+  animation: gh3d-beam-pulse 2.4s ease-in-out infinite;
+}
+
+@keyframes gh3d-in-pulse {
+  0%,
+  100% {
+    opacity: 0.75;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.gh3d-in {
+  animation: gh3d-in-pulse 2.4s ease-in-out infinite;
+}
+
 @keyframes skeleton-shimmer {
   0%,
   100% {

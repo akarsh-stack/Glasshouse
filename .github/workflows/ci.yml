@@ -39,6 +39,42 @@ jobs:
           python -m eval.run_eval
           python -m eval.run_eval --chunker fixed
 
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build the image
+        run: docker build -t glasshouse:ci .
+
+      - name: Boot it and check health
+        # The README claims clone-and-run. This is that claim under test: the
+        # image has to come up and answer /api/health with no API key set,
+        # because retrieval works without one and only generation needs it.
+        run: |
+          docker run -d --name gh -p 8000:8000 glasshouse:ci
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:8000/api/health; then
+              echo "healthy after ${i}s"; exit 0
+            fi
+            sleep 2
+          done
+          echo "never became healthy"; docker logs gh; exit 1
+
+      - name: Ingest a sample and query it
+        run: |
+          curl -fsS -F "file=@samples/orbital-mechanics-notes.md" \
+            http://localhost:8000/api/documents
+          # Generation will fail without a key; retrieval must not.
+          curl -fsS -X POST http://localhost:8000/api/query \
+            -H 'Content-Type: application/json' \
+            -d '{"query":"How much water does life support recycle?"}' \
+            | grep -q '"type": "retrieval"'
+
+      - name: Container logs
+        if: always()
+        run: docker logs gh || true
+
   frontend:
     runs-on: ubuntu-latest
     steps:

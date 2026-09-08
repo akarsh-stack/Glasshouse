@@ -1,9 +1,44 @@
-version: "3.9"
+# `docker compose up` gives you the whole thing on http://localhost:8000.
+#
+# Redis is optional by design: with it absent the cache falls back to an
+# in-memory LRU and the rate limiter to in-memory buckets, and the app says so
+# at /api/health. It is included here because it costs nothing to run, not
+# because anything needs it.
+
 services:
+  app:
+    build: .
+    ports: ["8000:8000"]
+    environment:
+      # Generation needs a key. Anthropic has no free tier; see
+      # backend/.env.example for free OpenAI-compatible alternatives.
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      LLM_PROVIDER: ${LLM_PROVIDER:-anthropic}
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_MODEL_FAST: ${LLM_MODEL_FAST:-}
+      LLM_MODEL_QUALITY: ${LLM_MODEL_QUALITY:-}
+      LLM_MODEL_DEEP: ${LLM_MODEL_DEEP:-}
+      REDIS_URL: redis://redis:6379
+      # Same-origin: the backend serves the built frontend, so no browser
+      # origin ever needs allowing.
+      CORS_ORIGINS: ""
+    volumes:
+      # Chroma collection and the trace DB. Regenerable, but keeping them
+      # across restarts means uploaded documents survive `compose down`.
+      - glasshouse-data:/data
+    depends_on:
+      redis:
+        condition: service_started
+
   redis:
     image: redis:7-alpine
     ports: ["6379:6379"]
+
   qdrant:
     image: qdrant/qdrant
     profiles: ["qdrant"]
     ports: ["6333:6333"]
+
+volumes:
+  glasshouse-data:

@@ -1,8 +1,17 @@
+/// <reference types="vitest" />
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
 export default defineConfig({
   plugins: [react()],
+  test: {
+    // jsdom only for files that render components; the pure-logic suites
+    // (stageTimeline) don't need a DOM and run faster without one, but a single
+    // environment keeps the config honest and the difference is milliseconds.
+    environment: "jsdom",
+    setupFiles: ["./vitest.setup.ts"],
+    globals: false,
+  },
   server: {
     // Pinned rather than left on Vite's 5173 default. 5173 is the default for
     // every Vite project, so on a machine running more than one the server

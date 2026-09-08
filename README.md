@@ -110,6 +110,24 @@ Traces persist to SQLite and power both the trace replay view and the Ops metric
   errors? Answer without context. Primary model down? Fallback tier, clearly
   labeled in the UI.
 
+## Run it with one command
+
+```bash
+docker compose up
+```
+
+Then open `http://localhost:8000`. The image builds the frontend and serves it
+from the backend, so there is one process, one port and no CORS. The ~80 MB
+embedding model is baked in at build time rather than downloaded on first
+query. Redis comes up alongside it, though the app runs fine without it.
+
+Generation needs a key — set `ANTHROPIC_API_KEY`, or point `LLM_PROVIDER=openai`
+at a free tier (see [Running without an Anthropic key](#running-without-an-anthropic-key)).
+Retrieval, chunking, caching and the whole trace work with no key at all.
+
+CI builds this image on every push, boots it, and runs a query through it, so
+the claim above is tested rather than asserted.
+
 ## Setup (under 5 minutes)
 
 **Prerequisites:** Python 3.12, Node 18+, and optionally Docker (only for Redis).
@@ -213,6 +231,9 @@ cd backend && pip install -r requirements-dev.txt && pytest
 ```bash
 cd frontend && npm test && npm run lint
 ```
+
+**155 tests** — 125 pytest, 30 vitest — plus oxlint, `tsc`, a production build
+and a Docker build-and-boot, all on every push.
 
 The backend suite covers pipeline ordering (a cache hit must not touch the
 vector store, and a query is embedded exactly once), that every stage the UI

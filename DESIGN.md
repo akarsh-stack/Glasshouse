@@ -222,6 +222,34 @@ foreshorten to nothing every half turn, which reads as a rendering fault rather
 than a rotation. Under `prefers-reduced-motion` the slab parks at an angle
 showing three faces, so it still reads as a solid.
 
+## The tier switch shows its work
+
+Fast / Quality / Deep were three words with no feedback — picking "deep" gave no
+signal that anything had happened, let alone what it would do. Switching now
+moves three things at once:
+
+- **The indicator travels.** A single shared element (`layoutId`) slides between
+  options on a spring, rather than a background switching off in one place and
+  on in another, so the selection reads as one object moving. It picks up the
+  tier's hue.
+- **Two bars re-proportion.** Speed falls and depth rises across the tiers
+  (64 / 38 / 19 px against 22 / 45 / 64 px), so the trade is visible as a
+  motion, not a claim.
+- **The model name crossfades** — and it is the *real* one, resolved server-side
+  by the same `resolve_models` the router uses and published on `/api/health`.
+  Hardcoding "Haiku / Sonnet / Opus" would go stale the moment `LLM_BASE_URL`
+  points at Groq; with a free tier configured the switch shows the three Gemini
+  models it will actually call.
+
+**The bars are deliberately not measurements.** This project's whole argument is
+that the numbers on screen are measured, so inventing "1.2 s" for a query nobody
+ran would corrode the thing it exists to prove. They carry no units and are
+labelled as characteristics. Measured numbers appear in the receipt, after a
+real query.
+
+Each tier takes its hue from the existing stage palette — embed green, generate
+sky, retrieve violet — rather than introducing three new colours.
+
 ## Everything else stays quiet
 
 One bold moment (the trace). Panels are flat ink with hairline borders, no

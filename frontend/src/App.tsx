@@ -1,6 +1,7 @@
 import { Suspense, lazy, useEffect, useState } from "react";
 import { ChevronLeft, ChevronRight, Spinner } from "./components/icons";
 import { Wordmark } from "./components/Logo";
+import { TIER_HUE } from "./components/TierReadout";
 import { Segmented } from "./components/ui";
 import type { Tier } from "./types";
 import { Playground } from "./views/Playground";
@@ -21,6 +22,25 @@ export default function App() {
   const [railOpen, setRailOpen] = useState<boolean>(
     () => window.matchMedia("(min-width: 1024px)").matches,
   );
+  // Tier -> model, resolved by the backend. Fetched once: BootGate has already
+  // confirmed /api/health answers by the time this mounts, so there is nothing
+  // to retry against.
+  const [models, setModels] = useState<Record<string, string> | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    void fetch("/api/health")
+      .then((r) => r.json())
+      .then((h: { models?: Record<string, string> }) => {
+        if (alive) setModels(h.models ?? null);
+      })
+      .catch(() => {
+        /* the readout falls back to "resolving…" */
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   // Collapse the document rail automatically on narrow viewports.
   useEffect(() => {
@@ -67,6 +87,7 @@ export default function App() {
           />
           <Segmented<Tier>
             ariaLabel="Model tier"
+            accent={TIER_HUE[tier]}
             options={[
               { value: "fast", label: "Fast" },
               { value: "quality", label: "Quality" },
@@ -81,7 +102,7 @@ export default function App() {
       {/* views — playground stays mounted so an in-flight query keeps
           streaming while the user checks the ops dashboard */}
       <div className={view === "playground" ? "flex min-h-0 flex-1" : "hidden"}>
-        <Playground tier={tier} railOpen={railOpen} />
+        <Playground tier={tier} railOpen={railOpen} tierModel={models?.[tier] ?? null} />
       </div>
       {view === "ops" && (
         <div className="flex min-h-0 flex-1">

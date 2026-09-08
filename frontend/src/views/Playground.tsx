@@ -7,6 +7,7 @@ import { DocumentRail } from "../components/DocumentRail";
 import { PipelineTrace } from "../components/PipelineTrace";
 import { Receipt } from "../components/Receipt";
 import { SuggestedQuestions } from "../components/SuggestedQuestions";
+import { TierReadout } from "../components/TierReadout";
 import { Skeleton } from "../components/ui";
 import { useDocuments } from "../hooks/useDocuments";
 import { useQueryStream } from "../hooks/useQueryStream";
@@ -16,9 +17,11 @@ import type { Tier } from "../types";
 interface PlaygroundProps {
   tier: Tier;
   railOpen: boolean;
+  /** Model the backend resolved for `tier`, or null before /api/health lands. */
+  tierModel: string | null;
 }
 
-export function Playground({ tier, railOpen }: PlaygroundProps) {
+export function Playground({ tier, railOpen, tierModel }: PlaygroundProps) {
   const docs = useDocuments();
   const { state, run } = useQueryStream();
   const [input, setInput] = useState("");
@@ -108,8 +111,15 @@ export function Playground({ tier, railOpen }: PlaygroundProps) {
             </p>
           )}
 
+          {/* What the selected tier will actually do. Sits with the trace
+              rather than in the header: it describes the Generate stage, and
+              the header has no room for it at 800px. */}
+          <div className="mt-3 flex items-center justify-end">
+            <TierReadout tier={tier} model={tierModel} />
+          </div>
+
           {/* signature element: the pipeline trace */}
-          <div className="mt-6 rounded-md border border-ink-700 bg-ink-900 px-3 pb-1 pt-3 shadow-panel surface-edge">
+          <div className="mt-3 rounded-md border border-ink-700 bg-ink-900 px-3 pb-1 pt-3 shadow-panel surface-edge">
             <div className="mb-1 flex items-baseline justify-between px-1">
               <span className="label-caps">Pipeline trace</span>
               {hasRun && (

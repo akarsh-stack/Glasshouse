@@ -158,7 +158,9 @@ npm install
 npm run dev
 ```
 
-Open the Vite dev server URL it prints (default `http://localhost:5173`); it
+Open the Vite dev server URL it prints (`http://localhost:5190` — pinned with
+`strictPort`, since 5173 is every Vite project's default and collides the moment
+you run two); it
 proxies `/api` to port 8000. For a single-origin setup, `npm run build` instead —
 the backend serves `frontend/dist` at `http://localhost:8000` with no proxy and no
 CORS involved.
@@ -232,7 +234,7 @@ cd backend && pip install -r requirements-dev.txt && pytest
 cd frontend && npm test && npm run lint
 ```
 
-**155 tests** — 125 pytest, 30 vitest — plus oxlint, `tsc`, a production build
+**168 tests** — 129 pytest, 39 vitest — plus oxlint, `tsc`, a production build
 and a Docker build-and-boot, all on every push.
 
 The backend suite covers pipeline ordering (a cache hit must not touch the

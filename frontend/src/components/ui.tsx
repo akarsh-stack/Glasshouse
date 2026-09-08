@@ -1,5 +1,8 @@
 import clsx from "clsx";
+import { useId } from "react";
+import { motion } from "framer-motion";
 import type { ButtonHTMLAttributes, HTMLAttributes, ReactNode } from "react";
+import { useReducedMotion } from "../hooks/useReducedMotion";
 
 /* ---------------------------------------------------------------- Panel */
 
@@ -94,6 +97,8 @@ interface SegmentedProps<T extends string> {
   onChange: (v: T) => void;
   ariaLabel: string;
   className?: string;
+  /** Tints the moving indicator; used by the tier switch to carry stage hue. */
+  accent?: string;
 }
 
 export function Segmented<T extends string>({
@@ -102,35 +107,60 @@ export function Segmented<T extends string>({
   onChange,
   ariaLabel,
   className,
+  accent,
 }: SegmentedProps<T>) {
+  const reducedMotion = useReducedMotion();
+  // One id per mounted control, so the two switchers in the header don't share
+  // a layout animation and fling their indicators at each other.
+  const groupId = useId();
+
   return (
     <div
       role="group"
       aria-label={ariaLabel}
       className={clsx(
-        "inline-flex items-center rounded border border-ink-700 bg-ink-900 p-0.5 shadow-panel",
+        "relative inline-flex items-center rounded border border-ink-700 bg-ink-900 p-0.5 shadow-panel",
         className,
       )}
     >
-      {options.map((opt) => (
-        <button
-          key={opt.value}
-          type="button"
-          aria-pressed={value === opt.value}
-          onClick={() => onChange(opt.value)}
-          className={clsx(
-            "rounded-sm px-2.5 py-1 font-body text-xs font-medium transition-colors duration-120",
-            // The selected segment reads as pressed *into* the track, the
-            // inverse of Button's raised state — so the two never look like the
-            // same control. Inset shadow instead of a lift does that.
-            value === opt.value
-              ? "bg-ink-700 text-ink-100 shadow-[inset_0_1px_3px_rgba(2,5,12,0.55)]"
-              : "text-ink-300 hover:bg-ink-800/60 hover:text-ink-100",
-          )}
-        >
-          {opt.label}
-        </button>
-      ))}
+      {options.map((opt) => {
+        const selected = value === opt.value;
+        return (
+          <button
+            key={opt.value}
+            type="button"
+            aria-pressed={selected}
+            onClick={() => onChange(opt.value)}
+            className={clsx(
+              "relative rounded-sm px-2.5 py-1 font-body text-xs font-medium transition-colors duration-120",
+              selected ? "text-ink-100" : "text-ink-300 hover:text-ink-100",
+            )}
+          >
+            {/* The indicator is a single shared element that travels between
+                options rather than a background toggling on and off, so the
+                selection reads as one thing moving. It sits *behind* the label
+                and is aria-hidden — the state is already on aria-pressed. */}
+            {selected && (
+              <motion.span
+                layoutId={`seg-${groupId}`}
+                aria-hidden
+                className="absolute inset-0 rounded-sm bg-ink-700 shadow-[inset_0_1px_3px_rgba(2,5,12,0.55)]"
+                style={
+                  accent
+                    ? { boxShadow: `inset 0 1px 3px rgba(2,5,12,0.55), 0 0 10px -2px ${accent}88`, borderBottom: `1.5px solid ${accent}` }
+                    : undefined
+                }
+                transition={
+                  reducedMotion
+                    ? { duration: 0 }
+                    : { type: "spring", stiffness: 520, damping: 38, mass: 0.7 }
+                }
+              />
+            )}
+            <span className="relative">{opt.label}</span>
+          </button>
+        );
+      })}
     </div>
   );
 }

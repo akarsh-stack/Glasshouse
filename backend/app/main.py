@@ -19,7 +19,7 @@ from .services.vector_store import ChromaVectorStore
 from .services.ingestion import IngestService
 from .services.retrieval import RetrievalOrchestrator
 from .services.cache import CacheLayer
-from .services.llm import LLMService
+from .services.llm import LLMService, resolve_models
 from .services.router import ModelRouter
 from .services.rate_limiter import TokenBucketRateLimiter
 from .services.observability import ObservabilityService
@@ -127,6 +127,12 @@ async def health():
         "redis": redis_state,
         "embeddings": config.EMBEDDING_PROVIDER,
         "chunker": config.CHUNKER,
+        "provider": config.LLM_PROVIDER,
+        "default_tier": config.LLM_DEFAULT_TIER,
+        # Resolved server-side so the UI shows the model that will actually
+        # answer. Hardcoding "Haiku / Sonnet / Opus" in the frontend goes stale
+        # the moment LLM_BASE_URL points somewhere else.
+        "models": resolve_models(config),
     }
 
 

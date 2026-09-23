@@ -1,0 +1,50 @@
+# One service: the Docker image builds the frontend and the backend serves it.
+#
+# Deploy with Render's Blueprints — New > Blueprint, point it at this repo, and
+# it reads this file. The only manual step is the API key, which is marked
+# sync: false so it is never committed.
+#
+# Why not Vercel: this backend keeps a ChromaDB directory and a SQLite trace
+# store on disk, holds an ~80 MB ONNX model in memory, runs a background
+# asyncio worker for embedding micro-batches, and streams SSE responses for
+# 15+ seconds. Serverless functions give none of those — read-only filesystem,
+# no state between invocations, short execution limits. It needs a container.
+
+services:
+  - type: web
+    name: glasshouse
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    healthCheckPath: /api/health
+    envVars:
+      # Set this in the Render dashboard after the first deploy. Free
+      # OpenAI-compatible alternatives are in backend/.env.example.
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: LLM_PROVIDER
+        value: anthropic
+
+      # Seed samples/ when the store is empty. The free plan has no persistent
+      # disk, so state resets on every restart — without this a visitor arrives
+      # to an empty corpus and no starter questions.
+      - key: SEED_SAMPLES
+        value: "true"
+
+      # Same-origin: the backend serves the built frontend, so no browser
+      # origin ever needs allowing.
+      - key: CORS_ORIGINS
+        value: ""
+
+      # Ephemeral on the free plan, which is fine — both are regenerable. Add a
+      # disk and point these at its mount path to keep uploads across restarts.
+      - key: CHROMA_PATH
+        value: /data/chroma
+      - key: DATABASE_URL
+        value: sqlite:////data/glasshouse.db
+
+      # No Redis service here: the cache falls back to an in-memory LRU and the
+      # limiter to in-memory buckets, and /api/health reports which is in use.
+      # Add a Render Key Value instance and set REDIS_URL to make them shared.
+      - key: REDIS_URL
+        value: ""

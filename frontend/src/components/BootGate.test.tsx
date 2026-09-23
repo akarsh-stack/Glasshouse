@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { BootGate } from "./BootGate";
+import { BootGate, isLocalOrigin } from "./BootGate";
 import { suggestionsFor } from "./SuggestedQuestions";
 import type { DocumentInfo } from "../types";
 
@@ -74,6 +74,21 @@ describe("BootGate", () => {
     expect(status).toHaveAttribute("aria-live", "polite");
   });
 
+  it("tells a developer how to start the backend, not a visitor", async () => {
+    // The hint has to match who is reading it. On a deployed origin, "run
+    // uvicorn" is noise; locally, "waking up" hides an unstarted server.
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    mockHealth(() => Promise.reject(new Error("down")));
+    render(
+      <BootGate>
+        <p>app body</p>
+      </BootGate>,
+    );
+    await vi.advanceTimersByTimeAsync(7000);
+    expect(await screen.findByText(/uvicorn app.main:app/)).toBeInTheDocument();
+    vi.useRealTimers();
+  });
+
   it("offers a way through so the frontend can be inspected offline", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     mockHealth(() => Promise.reject(new Error("down")));
@@ -129,5 +144,23 @@ describe("suggestionsFor", () => {
       doc("meridian-release-notes.pdf"),
     ]);
     expect(s.length).toBeLessThanOrEqual(4);
+  });
+});
+
+describe("isLocalOrigin", () => {
+  it("recognises development hosts", () => {
+    for (const h of ["localhost", "127.0.0.1", "[::1]", "mymac.local", ""]) {
+      expect(isLocalOrigin(h)).toBe(true);
+    }
+  });
+
+  it("treats a deployed origin as remote", () => {
+    for (const h of ["glasshouse.onrender.com", "glasshouse.vercel.app", "example.com"]) {
+      expect(isLocalOrigin(h)).toBe(false);
+    }
+  });
+
+  it("does not mistake a hostname merely containing localhost", () => {
+    expect(isLocalOrigin("notlocalhost.com")).toBe(false);
   });
 });

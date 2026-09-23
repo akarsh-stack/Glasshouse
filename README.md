@@ -128,6 +128,40 @@ Retrieval, chunking, caching and the whole trace work with no key at all.
 CI builds this image on every push, boots it, and runs a query through it, so
 the claim above is tested rather than asserted.
 
+## Deploying it
+
+The Docker image builds the frontend and serves it from the backend, so a
+deploy is **one service, one URL, no CORS**. `render.yaml` is a Render blueprint
+for exactly that:
+
+1. Render → **New → Blueprint**, point it at this repo. It reads `render.yaml`.
+2. Set `ANTHROPIC_API_KEY` in the dashboard (it is `sync: false`, so it is never
+   committed). Or use a free provider — see
+   [Running without an Anthropic key](#running-without-an-anthropic-key).
+3. Open the service URL. `SEED_SAMPLES=true` means the sample corpus is already
+   ingested, so the starter questions work on arrival.
+
+Fly, Railway and Cloud Run all take the same Dockerfile; only the config file
+differs.
+
+**A serverless host will not work for this**, and it isn't a configuration
+problem. The backend keeps a ChromaDB directory and a SQLite trace store on
+disk, holds an ~80 MB ONNX model in memory, runs a background asyncio worker for
+embedding micro-batches, and streams SSE responses for 15+ seconds. Serverless
+functions offer a read-only filesystem, no state between invocations, and short
+execution limits. It needs a container.
+
+Two things to expect on a free plan, both of which the app handles rather than
+hides:
+
+- **Cold starts.** The service spins down when idle, and waking it has to load
+  the embedding model. The boot screen polls `/api/health`, says the backend is
+  waking, and continues by itself — it allows 45 s before explaining, against 6 s
+  when running locally.
+- **No persistent disk.** Chroma and the trace DB reset on restart, which is why
+  seeding exists. Attach a disk and point `CHROMA_PATH` and `DATABASE_URL` at
+  its mount path to keep uploads.
+
 ## Setup (under 5 minutes)
 
 **Prerequisites:** Python 3.12, Node 18+, and optionally Docker (only for Redis).
@@ -234,7 +268,7 @@ cd backend && pip install -r requirements-dev.txt && pytest
 cd frontend && npm test && npm run lint
 ```
 
-**168 tests** — 129 pytest, 39 vitest — plus oxlint, `tsc`, a production build
+**178 tests** — 135 pytest, 43 vitest — plus oxlint, `tsc`, a production build
 and a Docker build-and-boot, all on every push.
 
 The backend suite covers pipeline ordering (a cache hit must not touch the

@@ -20,7 +20,28 @@ import { STAGE_COLOR, WARN_COLOR } from "../lib/stages";
  */
 
 const POLL_MS = 900;
-const HINT_AFTER_MS = 6000;
+
+/*
+ * How long before the gate stops saying "waiting" and explains itself.
+ *
+ * Longer when hosted, because a free host spins the service down when idle and
+ * a cold start has to load the ~80 MB embedding model — perfectly normal, and
+ * calling it "unreachable" after six seconds would be wrong. Locally, nothing
+ * takes that long: either uvicorn is running or it isn't.
+ */
+const LOCAL_HINT_MS = 6000;
+const HOSTED_HINT_MS = 45000;
+
+/** Served from a dev machine, rather than a deployed origin. */
+export function isLocalOrigin(hostname: string): boolean {
+  return (
+    hostname === "localhost" ||
+    hostname === "127.0.0.1" ||
+    hostname === "[::1]" ||
+    hostname === "" ||
+    hostname.endsWith(".local")
+  );
+}
 
 type Phase = "checking" | "ready" | "unreachable";
 
@@ -35,6 +56,8 @@ export function BootGate({ children }: { children: React.ReactNode }) {
   const [phase, setPhase] = useState<Phase>("checking");
   const [skipped, setSkipped] = useState(false);
   const startedAt = useRef(Date.now());
+  const local = isLocalOrigin(window.location.hostname);
+  const hintAfter = local ? LOCAL_HINT_MS : HOSTED_HINT_MS;
 
   useEffect(() => {
     if (phase === "ready") return;
@@ -55,9 +78,7 @@ export function BootGate({ children }: { children: React.ReactNode }) {
         throw new Error(String(res.status));
       } catch {
         if (!alive) return;
-        setPhase(
-          Date.now() - startedAt.current > HINT_AFTER_MS ? "unreachable" : "checking",
-        );
+        setPhase(Date.now() - startedAt.current > hintAfter ? "unreachable" : "checking");
       }
     };
 
@@ -93,18 +114,35 @@ export function BootGate({ children }: { children: React.ReactNode }) {
               boxShadow: `0 0 6px ${unreachable ? WARN_COLOR : STAGE_COLOR.generate}`,
             }}
           />
-          {unreachable ? "backend unreachable" : "waiting for backend"}
+          {unreachable
+            ? local
+              ? "backend unreachable"
+              : "backend still waking up"
+            : "waiting for backend"}
         </p>
 
         {unreachable && (
           <div className="mt-1 flex max-w-measure flex-col items-center gap-3">
-            <p className="text-ui text-ink-300">
-              Nothing is answering on <code className="font-mono">/api/health</code>. First
-              start also downloads the embedding model, which takes a minute.
-            </p>
-            <pre className="w-full overflow-x-auto rounded-md border border-ink-700 bg-ink-900 px-3.5 py-2.5 text-left font-mono text-meta text-ink-100 shadow-panel surface-edge">
-              cd backend &amp;&amp; uvicorn app.main:app
-            </pre>
+            {/* The hint has to match who is reading it. Telling a visitor on a
+                deployed site to run uvicorn is noise; telling a developer the
+                service is "waking up" hides the fact they never started it. */}
+            {local ? (
+              <>
+                <p className="text-ui text-ink-300">
+                  Nothing is answering on <code className="font-mono">/api/health</code>.
+                  First start also downloads the embedding model, which takes a minute.
+                </p>
+                <pre className="w-full overflow-x-auto rounded-md border border-ink-700 bg-ink-900 px-3.5 py-2.5 text-left font-mono text-meta text-ink-100 shadow-panel surface-edge">
+                  cd backend &amp;&amp; uvicorn app.main:app
+                </pre>
+              </>
+            ) : (
+              <p className="text-ui text-ink-300">
+                Free hosting spins the service down when it's idle, so the first
+                request after a quiet spell has to start it and load the embedding
+                model. This page keeps checking and will continue on its own.
+              </p>
+            )}
             <button
               type="button"
               onClick={() => setSkipped(true)}

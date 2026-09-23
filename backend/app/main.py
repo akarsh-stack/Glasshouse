@@ -23,6 +23,7 @@ from .services.llm import LLMService, resolve_models
 from .services.router import ModelRouter
 from .services.rate_limiter import TokenBucketRateLimiter
 from .services.observability import ObservabilityService
+from .services.seeding import seed_samples
 from .api import documents, query, metrics, traces
 
 logger = logging.getLogger(__name__)
@@ -78,6 +79,9 @@ async def lifespan(app: FastAPI):
     pruned = observability.prune_traces(config.TRACE_RETENTION_HOURS)
     if pruned:
         logger.info(f"Pruned {pruned} traces older than {config.TRACE_RETENTION_HOURS}h")
+
+    if config.SEED_SAMPLES:
+        await seed_samples(ingest_svc, models.engine)
 
     documents.set_ingest_service(ingest_svc, rate_limiter)
     query.set_services(retrieval, cache, router_svc, rate_limiter, observability)

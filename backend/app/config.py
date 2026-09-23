@@ -61,6 +61,11 @@ class Config(BaseSettings):
     # Ingestion runs the embedding model over whatever arrives and holds the
     # whole upload in memory, so it needs a ceiling. 20 MB covers a large PDF.
     MAX_UPLOAD_BYTES: int = 20 * 1024 * 1024
+    # Ingest samples/ at startup when the store is empty. Off by default so
+    # local development doesn't re-ingest on every boot; on for deploys, where
+    # a host without a persistent disk otherwise greets every visitor with an
+    # empty corpus and no starter questions.
+    SEED_SAMPLES: bool = False
     # Ingestion is far more expensive per request than a query, so it spends
     # more of the same bucket.
     UPLOAD_TOKEN_COST: int = 25

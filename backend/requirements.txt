@@ -1,6 +1,10 @@
 fastapi>=0.111
 uvicorn[standard]>=0.29
-sqlmodel>=0.0.18
+# Upper bound deliberate: 0.0.18 was an open-ended floor, so CI resolved a
+# newer sqlmodel than local and its naive-datetime validation turned every
+# trace write into an error there while passing here. Pin the range so the
+# two environments agree.
+sqlmodel>=0.0.39,<0.1
 anthropic>=0.28
 chromadb>=0.5
 redis>=5.0

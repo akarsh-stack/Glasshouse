@@ -135,11 +135,19 @@ deploy is **one service, one URL, no CORS**. `render.yaml` is a Render blueprint
 for exactly that:
 
 1. Render → **New → Blueprint**, point it at this repo. It reads `render.yaml`.
-2. Set `ANTHROPIC_API_KEY` in the dashboard (it is `sync: false`, so it is never
-   committed). Or use a free provider — see
-   [Running without an Anthropic key](#running-without-an-anthropic-key).
+2. Set **`LLM_API_KEY`** on the service. That is the only value to enter by
+   hand — provider, base URL and the three model pins are all committed, so a
+   re-sync restores a working configuration instead of leaving you to
+   reassemble six variables in a dashboard. Get a free key at
+   [aistudio.google.com/apikey](https://aistudio.google.com/apikey) and keep
+   billing disabled on that project, or switch to Claude as described in
+   `render.yaml`.
 3. Open the service URL. `SEED_SAMPLES=true` means the sample corpus is already
    ingested, so the starter questions work on arrival.
+
+Set variables **either** on the service **or** in an environment group, not
+both: a service-level value silently overrides the group's, which is a
+confusing way to spend an afternoon.
 
 Fly, Railway and Cloud Run all take the same Dockerfile; only the config file
 differs.

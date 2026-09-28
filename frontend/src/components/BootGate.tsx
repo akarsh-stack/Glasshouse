@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Glasshouse3D } from "./Glasshouse3D";
+import { isLocalOrigin } from "../lib/origin";
 import { STAGE_COLOR, WARN_COLOR } from "../lib/stages";
 
 /*
@@ -32,16 +33,6 @@ const POLL_MS = 900;
 const LOCAL_HINT_MS = 6000;
 const HOSTED_HINT_MS = 45000;
 
-/** Served from a dev machine, rather than a deployed origin. */
-export function isLocalOrigin(hostname: string): boolean {
-  return (
-    hostname === "localhost" ||
-    hostname === "127.0.0.1" ||
-    hostname === "[::1]" ||
-    hostname === "" ||
-    hostname.endsWith(".local")
-  );
-}
 
 type Phase = "checking" | "ready" | "unreachable";
 

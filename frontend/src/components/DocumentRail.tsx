@@ -4,6 +4,7 @@ import { motion, useReducedMotion } from "framer-motion";
 import type { UploadStatus } from "../hooks/useDocuments";
 import { STAGE_COLOR, WARN_COLOR } from "../lib/stages";
 import type { DocumentInfo } from "../types";
+import { uploadsPersist } from "../lib/origin";
 import { Close, Spinner, Upload } from "./icons";
 import { Skeleton } from "./ui";
 
@@ -13,6 +14,8 @@ interface DocumentRailProps {
   uploads: UploadStatus[];
   onUpload: (files: FileList | File[]) => void;
   onDelete: (id: string) => void;
+  /** Overridable for tests; defaults to "durable only on a dev machine". */
+  uploadsPersist?: boolean;
 }
 
 export function DocumentRail({
@@ -21,6 +24,7 @@ export function DocumentRail({
   uploads,
   onUpload,
   onDelete,
+  uploadsPersist: persists = uploadsPersist(),
 }: DocumentRailProps) {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [dragOver, setDragOver] = useState(false);
@@ -83,6 +87,18 @@ export function DocumentRail({
           onChange={handlePick}
         />
       </div>
+
+      {/* Ephemeral storage is a property of the hosting tier, not a fault, so
+          this sits quietly under the dropzone rather than shouting: no alert
+          role, muted text, no icon. But it does have to be said — an upload
+          that silently disappears twenty minutes later is the worst kind of
+          failure, because nothing on screen ever accounts for it. */}
+      {!persists && (
+        <p className="px-1 text-label normal-case leading-relaxed tracking-normal text-ink-300">
+          Uploads reset when the free instance sleeps. The two samples are
+          re-seeded automatically; anything you add is temporary.
+        </p>
+      )}
 
       {/* per-file upload status */}
       {uploads.length > 0 && (

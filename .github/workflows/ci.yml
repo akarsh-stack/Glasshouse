@@ -71,6 +71,35 @@ jobs:
             -d '{"query":"How much water does life support recycle?"}' \
             | grep -q '"type": "retrieval"'
 
+      - name: Boot the openai-compatible provider
+        # The run above uses the default provider, so LLM_PROVIDER=openai was
+        # never exercised in a clean container — and `openai` was missing from
+        # requirements.txt while being present in the dev venv, so the deploy
+        # died on boot with ModuleNotFoundError and nothing here noticed.
+        #
+        # This is the configuration render.yaml actually ships. The key is a
+        # dummy: the SDK doesn't connect until a request, so constructing the
+        # client is what's under test.
+        run: |
+          docker rm -f gh-openai 2>/dev/null || true
+          docker run -d --name gh-openai -p 8001:8000 \
+            -e LLM_PROVIDER=openai \
+            -e LLM_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai/ \
+            -e LLM_API_KEY=dummy-key-not-used-at-startup \
+            -e SEED_SAMPLES=true \
+            glasshouse:ci
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:8001/api/health | grep -q '"provider": *"openai"'; then
+              echo "openai provider booted and reports itself"; exit 0
+            fi
+            sleep 2
+          done
+          echo "openai provider never became healthy"; docker logs gh-openai; exit 1
+
+      - name: Container logs (openai)
+        if: always()
+        run: docker logs gh-openai || true
+
       - name: Container logs
         if: always()
         run: docker logs gh || true

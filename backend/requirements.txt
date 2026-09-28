@@ -6,6 +6,12 @@ uvicorn[standard]>=0.29
 # two environments agree.
 sqlmodel>=0.0.39,<0.1
 anthropic>=0.28
+# Not optional any more. LLM_PROVIDER=openai is the default deploy path
+# (render.yaml), and services/llm.py imports this at client construction —
+# the container died on boot with ModuleNotFoundError because this line was
+# missing while the package happened to be installed in the dev venv.
+# Also used by EMBEDDING_PROVIDER=openai.
+openai>=1.40
 chromadb>=0.5
 redis>=5.0
 cachetools>=5.3
